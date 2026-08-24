@@ -11,7 +11,6 @@ import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils"
 
 const titleSchema = z.string().trim().min(5).max(160);
 const bodySchema = z.string().trim().min(2).max(50_000);
-const usernameSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/);
 
 async function claimAttachments(body: string, userId: string, context: "THREAD" | "REPLY" | "MESSAGE", targetId: string) {
   if (!uploadsEnabled()) return;
@@ -136,16 +135,6 @@ export async function toggleFollow(formData: FormData) {
     await db.notification.create({ data: { type: "FOLLOW", recipientId: followingId, actorId: user.id } });
   }
   revalidatePath(returnTo);
-}
-
-export async function updateProfile(formData: FormData) {
-  const user = await requireUser();
-  const username = usernameSchema.parse(formData.get("username"));
-  const displayName = z.string().trim().min(1).max(60).parse(formData.get("displayName"));
-  const bio = z.string().trim().max(500).parse(formData.get("bio") ?? "");
-  await db.user.update({ where: { id: user.id }, data: { username, displayName, bio } });
-  revalidatePath(`/members/${user.id}`);
-  redirect(`/members/${user.id}`);
 }
 
 export async function updateThread(formData: FormData) {

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { Bell, Bookmark, MessageCircle, Plus, Search, ShieldCheck } from "lucide-react";
+import { AccountMenu } from "@/components/account-menu";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
@@ -27,7 +27,7 @@ export async function Header() {
             <Link href="/notifications" className="button button-ghost relative !p-2.5" aria-label={`${unread} unread notifications`}>
               <Bell size={18} />{unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full" style={{ background: "var(--danger)" }} />}
             </Link>
-            <span className="ml-1">{isE2ETestMode() ? <span className="pill">Test user</span> : <UserButton />}</span>
+            {isE2ETestMode() ? <span className="pill ml-1">Test user</span> : <AccountMenu id={viewer.id} displayName={viewer.displayName} username={viewer.username} imageUrl={viewer.imageUrl} />}
           </> : <>
             <Link href="/sign-in" className="button button-secondary">Sign in</Link>
             <Link href="/sign-up" className="button button-primary">Join Teich</Link>

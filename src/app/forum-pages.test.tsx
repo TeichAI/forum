@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   category: vi.fn(), tag: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(), categories: vi.fn(),
-  requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(),
+  requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   category: { findUnique: mocks.category, findMany: mocks.categories },
   tag: { findUnique: mocks.tag }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
 } }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
+vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
+vi.mock("@/components/account/account-security", () => ({ AccountSecurity: () => <section>Custom identity settings</section> }));
 vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, searchThreads: mocks.searchThreads, threadListInclude: {} }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/components/forum/thread-card", () => ({ ThreadCard: ({ thread }: { thread: { title: string } }) => <article>{thread.title}</article> }));
@@ -37,6 +39,7 @@ beforeEach(() => {
   mocks.listThreads.mockResolvedValue([]);
   mocks.searchThreads.mockResolvedValue([]);
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
+  mocks.mode.mockReturnValue(true);
 });
 
 describe("category, tag, and search pages", () => {
@@ -128,9 +131,15 @@ describe("protected utility pages", () => {
 
   it("renders profile settings defaults", async () => {
     render(await SettingsPage());
+    expect(screen.getByRole("heading", { name: "Account settings" })).toBeInTheDocument();
     expect(screen.getByLabelText("Display name")).toHaveValue("Owen");
     expect(screen.getByLabelText("Username")).toHaveValue("owen");
     expect(screen.getByLabelText("Bio")).toHaveValue("Pond builder");
+    expect(screen.queryByText("Custom identity settings")).not.toBeInTheDocument();
+
+    mocks.mode.mockReturnValue(false);
+    render(await SettingsPage());
+    expect(screen.getByText("Custom identity settings")).toBeInTheDocument();
   });
 });
 

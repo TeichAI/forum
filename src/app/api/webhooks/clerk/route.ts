@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const email = data.email_addresses.find((item) => item.id === data.primary_email_address_id)?.email_address;
     await db.user.upsert({
       where: { clerkId: data.id },
-      update: { email, displayName: [data.first_name, data.last_name].filter(Boolean).join(" ") || username, imageUrl: data.image_url },
+      update: { email, imageUrl: data.image_url },
       create: { clerkId: data.id, email, username, displayName: [data.first_name, data.last_name].filter(Boolean).join(" ") || username, imageUrl: data.image_url, role: bootstrapRole(data.id) },
     });
   }

@@ -37,7 +37,8 @@ test("a member updates their profile and publishes a tagged discussion", async (
   await page.getByLabel("Display name").fill("Updated Pond Member");
   await page.getByLabel("Bio").fill("Building a well-tested pond.");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page).toHaveURL(new RegExp(`/members/${featureIds.member}$`));
+  await expect(page.getByRole("status")).toHaveText("Profile saved.");
+  await page.goto(`/members/${featureIds.member}`);
   await expect(page.getByRole("heading", { name: "Updated Pond Member" })).toBeVisible();
 
   await page.goto("/c/general");

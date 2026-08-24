@@ -128,6 +128,7 @@ describe("Clerk webhook route", () => {
     const args = upsertMock.mock.calls[0][0];
     expect(args.create.username).toBe(expectedUsername);
     if (expectedRole) expect(args.create.role).toBe(expectedRole);
-    expect(args.update).toEqual(expect.objectContaining({ displayName: "New Member", email: "new@example.com" }));
+    expect(args.update).toEqual({ email: "new@example.com", imageUrl: "https://example.com/avatar.png" });
+    expect(args.create.displayName).toBe("New Member");
   });
 });

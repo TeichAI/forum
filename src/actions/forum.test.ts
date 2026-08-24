@@ -40,7 +40,7 @@ import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
   moderateReport, reportContent, sendMessage, setContentVisibility, setMemberRole,
   startConversation, suspendMember, toggleBookmark, toggleFollow, toggleReplyVote,
-  toggleThreadLock, toggleThreadVote, updateProfile, updateReply, updateThread,
+  toggleThreadLock, toggleThreadVote, updateReply, updateThread,
 } from "./forum";
 
 const ids = {
@@ -183,11 +183,6 @@ describe("member and content ownership actions", () => {
   it("prevents following or blocking oneself", async () => {
     await expect(toggleFollow(form({ userId: ids.user }))).rejects.toThrow("follow yourself");
     await expect(blockMember(form({ userId: ids.user }))).rejects.toThrow("block yourself");
-  });
-
-  it("updates a normalized profile and redirects", async () => {
-    await expect(updateProfile(form({ username: "  NEW_NAME ", displayName: " New Name ", bio: " Hello " }))).rejects.toThrow(`redirect:/members/${ids.user}`);
-    expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.user }, data: { username: "new_name", displayName: "New Name", bio: "Hello" } });
   });
 
   it.each([
