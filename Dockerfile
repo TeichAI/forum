@@ -17,11 +17,18 @@ FROM base AS builder
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
+ARG NEXT_PUBLIC_APP_URL
+
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 
 RUN npm run db:generate
-RUN --mount=type=secret,id=app_env,target=/app/.env.local,required=true npm run build
+RUN npm run build
 
 
 FROM base AS runner
