@@ -1,0 +1,6 @@
+import { updateProfile } from "@/actions/forum";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { requireUser } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+export default async function SettingsPage() { const user = await requireUser(); return <div className="shell max-w-2xl py-9"><div className="eyebrow">Account</div><h1 className="mt-1 text-3xl font-black">Edit your profile</h1><form action={updateProfile} className="card mt-7 space-y-5 p-6 sm:p-8"><div><label className="label" htmlFor="displayName">Display name</label><input className="input" id="displayName" name="displayName" defaultValue={user.displayName} minLength={1} maxLength={60} required /></div><div><label className="label" htmlFor="username">Username</label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 muted">@</span><input className="input !pl-8" id="username" name="username" defaultValue={user.username} pattern="[a-z0-9_]{3,30}" required /></div><p className="mt-1 text-xs muted">3–30 lowercase letters, numbers, or underscores.</p></div><div><label className="label" htmlFor="bio">Bio</label><textarea className="input" id="bio" name="bio" defaultValue={user.bio} rows={5} maxLength={500} /></div><div className="flex justify-end"><SubmitButton pendingLabel="Saving…">Save profile</SubmitButton></div></form></div>; }

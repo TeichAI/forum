@@ -1,0 +1,42 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: teich_forum
+      POSTGRES_USER: teich
+      POSTGRES_PASSWORD: teich
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teich -d teich_forum"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  forum:
+    build:
+      context: .
+      secrets:
+        - app_env
+    env_file:
+      - ${FORUM_ENV_FILE:-.env.local}
+    environment:
+      DATABASE_URL: postgresql://teich:teich@database:5432/teich_forum?schema=public
+      NEXT_PUBLIC_APP_URL: http://localhost:${FORUM_PORT:-3000}
+    ports:
+      - "${FORUM_PORT:-3000}:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+secrets:
+  app_env:
+    file: ${FORUM_ENV_FILE:-.env.local}

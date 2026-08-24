@@ -1,0 +1,55 @@
+"use client";
+
+import { useState } from "react";
+import { ImagePlus } from "lucide-react";
+import { UploadButton } from "@/lib/uploadthing";
+
+export type MarkdownEditorProps = {
+  name?: string;
+  minLength?: number;
+  placeholder?: string;
+  rows?: number;
+  initialValue?: string;
+};
+
+export function MarkdownEditorClient({
+  name = "body",
+  minLength = 2,
+  placeholder = "Write your thoughts…",
+  rows = 8,
+  initialValue = "",
+  uploadsEnabled,
+}: MarkdownEditorProps & { uploadsEnabled: boolean }) {
+  const [value, setValue] = useState(initialValue);
+
+  return (
+    <div className="overflow-hidden rounded-xl border" style={{ borderColor: "var(--line)", background: "var(--surface)" }}>
+      <div className="flex items-center justify-between border-b px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
+        <span>Markdown supported · use @username to mention</span>
+        {uploadsEnabled ? (
+          <UploadButton
+            endpoint="imageUploader"
+            appearance={{ button: "button button-ghost !h-8 !px-2 !text-xs", allowedContent: "hidden" }}
+            content={{ button: <><ImagePlus size={14} /> Add image</> }}
+            onClientUploadComplete={(files) => {
+              const file = files[0];
+              if (file?.serverData?.url) setValue((current) => `${current}${current ? "\n\n" : ""}![${file.name}](${file.serverData.url})`);
+            }}
+            onUploadError={(error) => window.alert(error.message)}
+          />
+        ) : null}
+      </div>
+      <textarea
+        className="w-full resize-y bg-transparent p-4 outline-none"
+        style={{ minHeight: `${rows * 1.5}rem`, color: "var(--foreground)" }}
+        name={name}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        minLength={minLength}
+        maxLength={50_000}
+        placeholder={placeholder}
+        required
+      />
+    </div>
+  );
+}

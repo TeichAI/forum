@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function NotFound() { return <div className="shell max-w-xl py-24 text-center"><div className="text-7xl">◌</div><h1 className="mt-4 text-3xl font-black">Nothing in this part of the pond</h1><p className="mt-2 muted">The page may have moved or the discussion is no longer public.</p><Link href="/" className="button button-primary mt-6">Back to the forum</Link></div>; }

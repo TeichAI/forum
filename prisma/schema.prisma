@@ -1,0 +1,352 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MEMBER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum ContentStatus {
+  PUBLISHED
+  HIDDEN
+  DELETED
+}
+
+enum NotificationType {
+  REPLY
+  MENTION
+  UPVOTE
+  FOLLOW
+  MESSAGE
+  MODERATION
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ReportTargetType {
+  THREAD
+  REPLY
+  USER
+  MESSAGE
+}
+
+enum ModerationActionType {
+  HIDE
+  RESTORE
+  LOCK
+  UNLOCK
+  SUSPEND
+  UNSUSPEND
+  RESOLVE_REPORT
+  DISMISS_REPORT
+}
+
+enum AttachmentContext {
+  THREAD
+  REPLY
+  MESSAGE
+  DRAFT
+}
+
+model User {
+  id               String       @id @default(cuid())
+  clerkId          String       @unique
+  email            String?
+  username         String       @unique
+  displayName      String
+  bio              String       @default("")
+  imageUrl         String?
+  role             UserRole     @default(MEMBER)
+  status           UserStatus   @default(ACTIVE)
+  suspendedUntil   DateTime?
+  suspensionReason String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  threads              Thread[]
+  replies              Reply[]
+  threadVotes          ThreadVote[]
+  replyVotes           ReplyVote[]
+  bookmarks            Bookmark[]
+  following            Follow[]             @relation("Following")
+  followers            Follow[]             @relation("Followers")
+  conversationsAsOne   Conversation[]       @relation("ConversationMemberOne")
+  conversationsAsTwo   Conversation[]       @relation("ConversationMemberTwo")
+  messages             Message[]
+  notifications        Notification[]       @relation("NotificationRecipient")
+  notificationActions  Notification[]       @relation("NotificationActor")
+  reports              Report[]             @relation("ReportReporter")
+  reviewedReports      Report[]             @relation("ReportReviewer")
+  moderationActions    ModerationAction[]    @relation("Moderator")
+  moderationReceived   ModerationAction[]    @relation("ModeratedUser")
+  blocksInitiated      Block[]               @relation("Blocker")
+  blocksReceived       Block[]               @relation("Blocked")
+  attachments          Attachment[]
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String
+  color       String   @default("#0f766e")
+  icon        String   @default("messages-square")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  threads     Thread[]
+
+  @@index([position])
+}
+
+model Tag {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  slug      String      @unique
+  createdAt DateTime    @default(now())
+  threads   ThreadTag[]
+}
+
+model Thread {
+  id        String        @id @default(cuid())
+  slug      String        @unique
+  title     String
+  body      String
+  status    ContentStatus @default(PUBLISHED)
+  isPinned  Boolean       @default(false)
+  isLocked  Boolean       @default(false)
+  viewCount Int           @default(0)
+  authorId  String
+  categoryId String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  editedAt  DateTime?
+  bumpedAt  DateTime      @default(now())
+  deletedAt DateTime?
+
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tags          ThreadTag[]
+  replies       Reply[]
+  votes         ThreadVote[]
+  bookmarks     Bookmark[]
+  notifications Notification[]
+
+  @@index([status, isPinned, bumpedAt(sort: Desc)])
+  @@index([categoryId, status, bumpedAt(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc)])
+}
+
+model ThreadTag {
+  threadId String
+  tagId    String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, tagId])
+  @@index([tagId])
+}
+
+model Reply {
+  id        String        @id @default(cuid())
+  body      String
+  status    ContentStatus @default(PUBLISHED)
+  threadId  String
+  authorId  String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  thread       Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author       User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  votes        ReplyVote[]
+  notifications Notification[]
+
+  @@index([threadId, status, createdAt])
+  @@index([authorId, createdAt(sort: Desc)])
+}
+
+model ThreadVote {
+  userId    String
+  threadId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@id([userId, threadId])
+  @@index([threadId])
+}
+
+model ReplyVote {
+  userId    String
+  replyId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply     Reply    @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, replyId])
+  @@index([replyId])
+}
+
+model Bookmark {
+  userId    String
+  threadId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@id([userId, threadId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followingId])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  pairKey       String   @unique
+  memberOneId   String
+  memberTwoId   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+  memberOne     User     @relation("ConversationMemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
+  memberTwo     User     @relation("ConversationMemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  notifications Notification[]
+
+  @@index([memberOneId, lastMessageAt(sort: Desc)])
+  @@index([memberTwoId, lastMessageAt(sort: Desc)])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+  editedAt       DateTime?
+  readAt         DateTime?
+  deletedAt      DateTime?
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  notifications  Notification[]
+
+  @@index([conversationId, createdAt])
+  @@index([authorId, createdAt(sort: Desc)])
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  type           NotificationType
+  recipientId    String
+  actorId        String?
+  threadId       String?
+  replyId        String?
+  conversationId String?
+  messageId      String?
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+  recipient      User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor          User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  thread         Thread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  reply          Reply?           @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message        Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt(sort: Desc)])
+}
+
+model Report {
+  id           String           @id @default(cuid())
+  targetType   ReportTargetType
+  targetId     String
+  reason       String
+  details      String           @default("")
+  status       ReportStatus     @default(OPEN)
+  reporterId   String
+  reviewedById String?
+  resolution   String?
+  createdAt    DateTime         @default(now())
+  reviewedAt   DateTime?
+  reporter     User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reviewedBy   User?            @relation("ReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+model ModerationAction {
+  id          String               @id @default(cuid())
+  type        ModerationActionType
+  moderatorId String
+  userId      String?
+  targetType  ReportTargetType
+  targetId    String
+  reason      String
+  metadata    Json?
+  createdAt   DateTime             @default(now())
+  moderator   User                 @relation("Moderator", fields: [moderatorId], references: [id], onDelete: Restrict)
+  user        User?                @relation("ModeratedUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId, createdAt(sort: Desc)])
+  @@index([moderatorId, createdAt(sort: Desc)])
+}
+
+model Block {
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model Attachment {
+  id        String            @id @default(cuid())
+  key       String            @unique
+  url       String
+  name      String
+  size      Int
+  context   AttachmentContext @default(DRAFT)
+  targetId  String?
+  userId    String
+  createdAt DateTime          @default(now())
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([context, targetId])
+}
