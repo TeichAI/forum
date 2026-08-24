@@ -5,5 +5,5 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "node_modules/**", "src/generated/**"]),
+  globalIgnores([".next/**", "node_modules/**", "src/generated/**", "coverage/**", "playwright-report/**", "test-results/**", ".auth-state/**"]),
 ]);

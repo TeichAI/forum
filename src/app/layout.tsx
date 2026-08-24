@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
       <html lang="en"><body><Header /><main>{children}</main><footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer></body></html>
     </ClerkProvider>
   );
