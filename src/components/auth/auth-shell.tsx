@@ -12,9 +12,7 @@ export function AuthShell({ children, eyebrow, title, description }: AuthShellPr
   return (
     <div className="shell py-7 sm:py-12">
       <div className="mx-auto grid max-w-5xl overflow-hidden rounded-[26px] border shadow-[var(--shadow)] lg:grid-cols-[0.9fr_1.1fr]" style={{ borderColor: "var(--line)", background: "var(--surface)" }}>
-        <aside className="relative hidden min-h-[640px] overflow-hidden p-10 lg:flex lg:flex-col" style={{ background: "var(--brand-dark)", color: "white" }}>
-          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-white/10" />
-          <div className="absolute -right-4 top-8 h-44 w-44 rounded-full border border-white/10" />
+        <aside className="relative hidden min-h-[640px] overflow-hidden p-10 lg:flex lg:flex-col" style={{ background: "var(--auth-panel)", color: "white" }}>
           <div className="absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-white/[0.04]" />
 
           <Link href="/" className="relative flex items-center font-black tracking-tight" aria-label="Teich Forum home">
@@ -26,16 +24,16 @@ export function AuthShell({ children, eyebrow, title, description }: AuthShellPr
               <Droplets size={23} />
             </div>
             <p className="max-w-sm text-3xl font-black leading-tight tracking-tight">A thoughtful place for ideas to take root.</p>
-            <p className="mt-4 max-w-sm text-sm leading-6 text-white/70">Join builders, ask better questions, and help shape what Teich becomes next.</p>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-white/85">Join builders, ask better questions, and help shape what Teich becomes next.</p>
 
-            <div className="mt-9 space-y-3 text-sm font-semibold text-white/85">
+            <div className="mt-9 space-y-3 text-sm font-semibold text-white/95">
               <div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10"><MessageCircleMore size={16} /></span>Start and join meaningful discussions</div>
               <div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10"><UsersRound size={16} /></span>Meet people building alongside you</div>
               <div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10"><Sparkles size={16} /></span>Share experiments, lessons, and ideas</div>
             </div>
           </div>
 
-          <p className="relative text-xs text-white/50">One account. The whole Teich community.</p>
+          <p className="relative text-xs text-white/75">One account. The whole Teich community.</p>
         </aside>
 
         <section className="flex min-h-[620px] items-center px-5 py-9 sm:px-12 sm:py-12 lg:px-16">
