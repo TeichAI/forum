@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { Bell, Bookmark, MessageCircle, Plus, Search, ShieldCheck } from "lucide-react";
 import { AccountMenu } from "@/components/account-menu";
-import { getViewer } from "@/lib/auth";
+import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
 
-export async function Header() {
-  const viewer = await getViewer();
+export type HeaderViewer = {
+  id: string;
+  displayName: string;
+  username: string;
+  imageUrl: string | null;
+  role: "MEMBER" | "MODERATOR" | "ADMIN";
+};
+
+export async function Header({ viewer }: { viewer: HeaderViewer | null }) {
   const unread = viewer ? await db.notification.count({ where: { recipientId: viewer.id, readAt: null } }) : 0;
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--background) 86%, transparent)" }}>
@@ -20,7 +27,7 @@ export async function Header() {
         </form>
         <nav className="ml-auto flex items-center gap-1 sm:ml-0" aria-label="Account navigation">
           {viewer ? <>
-            <Link href="/new" className="button button-primary"><Plus size={16} /><span className="desktop-only">New thread</span></Link>
+            <NewThreadTrigger className="button button-primary"><Plus size={16} /><span className="desktop-only">New thread</span></NewThreadTrigger>
             <Link href="/bookmarks" className="button button-ghost !p-2.5" aria-label="Bookmarks"><Bookmark size={18} /></Link>
             <Link href="/messages" className="button button-ghost !p-2.5" aria-label="Messages"><MessageCircle size={18} /></Link>
             {(viewer.role === "MODERATOR" || viewer.role === "ADMIN") && <Link href="/moderation" className="button button-ghost !p-2.5" aria-label="Moderation"><ShieldCheck size={18} /></Link>}

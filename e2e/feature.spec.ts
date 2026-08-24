@@ -42,12 +42,13 @@ test("a member updates their profile and publishes a tagged discussion", async (
   await expect(page.getByRole("heading", { name: "Updated Pond Member" })).toBeVisible();
 
   await page.goto("/c/general");
-  await page.getByRole("main").getByRole("link", { name: "New thread" }).click();
-  await expect(page).toHaveURL(`/new?categoryId=${featureIds.category}`);
+  await page.getByRole("main").getByRole("button", { name: "New thread" }).click();
+  await expect(page).toHaveURL(/\/c\/general$/);
+  await expect(page.getByRole("dialog", { name: "Start a discussion" })).toBeVisible();
   await expect(page.getByLabel("Space")).toHaveValue(featureIds.category);
   await page.getByLabel("Title").fill("How should we test community discussions?");
   await page.getByLabel(/Tags/).fill("Testing, next js, testing");
-  await page.locator('textarea[name="body"]').fill("A detailed browser-tested post for @pond_other.");
+  await page.getByRole("dialog").locator('textarea[name="body"]').fill("A detailed browser-tested post for @pond_other.");
   await page.getByRole("button", { name: "Publish discussion" }).click();
   await expect(page).toHaveURL(/\/t\/how-should-we-test-community-discussions-/);
   createdThreadUrl = page.url();
@@ -56,12 +57,15 @@ test("a member updates their profile and publishes a tagged discussion", async (
   await expect(page.getByRole("link", { name: "#next js" })).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
+
+  const missingPage = await page.goto("/new");
+  expect(missingPage?.status()).toBe(404);
 });
 
 test("another member replies, votes, follows, and starts a private conversation", async ({ context, page }) => {
   await useIdentity(context, featureIds.other);
   await page.goto(createdThreadUrl);
-  await page.locator('textarea[name="body"]').fill("A thoughtful reply for @pond_member from the second member.");
+  await page.getByPlaceholder("Write a thoughtful reply…").fill("A thoughtful reply for @pond_member from the second member.");
   await page.getByRole("button", { name: "Post reply" }).click();
   await expect(page.getByText(/A thoughtful reply for @pond_member/)).toBeVisible();
   const threadVoteForm = page.locator('form:has(input[name="threadId"])').first();
@@ -72,7 +76,7 @@ test("another member replies, votes, follows, and starts a private conversation"
   await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
   await page.getByRole("button", { name: "Message" }).click();
   await expect(page).toHaveURL(/\/messages\//);
-  await page.locator('textarea[name="body"]').fill("A private hello from Pond Other.");
+  await page.getByPlaceholder("Message Updated Pond Member…").fill("A private hello from Pond Other.");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("A private hello from Pond Other.")).toBeVisible();
 });

@@ -5,6 +5,7 @@ import { ImagePlus } from "lucide-react";
 import { UploadButton } from "@/lib/uploadthing";
 
 export type MarkdownEditorProps = {
+  id?: string;
   name?: string;
   minLength?: number;
   placeholder?: string;
@@ -13,6 +14,7 @@ export type MarkdownEditorProps = {
 };
 
 export function MarkdownEditorClient({
+  id,
   name = "body",
   minLength = 2,
   placeholder = "Write your thoughts…",
@@ -40,6 +42,7 @@ export function MarkdownEditorClient({
         ) : null}
       </div>
       <textarea
+        id={id}
         className="w-full resize-y bg-transparent p-4 outline-none"
         style={{ minHeight: `${rows * 1.5}rem`, color: "var(--foreground)" }}
         name={name}

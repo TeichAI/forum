@@ -23,6 +23,9 @@ vi.mock("@/components/forum/category-list", () => ({
 vi.mock("@/components/forum/thread-card", () => ({
   ThreadCard: () => <article data-testid="thread-card" />,
 }));
+vi.mock("@/components/new-thread-trigger", () => ({
+  NewThreadTrigger: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
+}));
 
 beforeEach(() => {
   mocks.getViewer.mockReset();
@@ -38,7 +41,7 @@ describe("home page", () => {
     render(await Home({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("heading", { level: 1, name: /Ideas grow better/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Start a discussion/ })).toHaveAttribute("href", "/new");
+    expect(screen.getByRole("button", { name: /Start a discussion/ })).toBeInTheDocument();
     expect(screen.getByText("1,234 community members")).toBeInTheDocument();
     expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument();
     expect(mocks.countUsers).toHaveBeenCalledWith({ where: { status: "ACTIVE" } });
@@ -52,7 +55,7 @@ describe("home page", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Welcome back, Owen Example" })).toBeInTheDocument();
     expect(screen.getByText("Catch up on the latest ideas and discussions.")).toBeInTheDocument();
     expect(screen.queryByText(/Ideas grow better/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Start a discussion/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start a discussion/ })).not.toBeInTheDocument();
     expect(mocks.countUsers).not.toHaveBeenCalled();
     expect(mocks.listThreads).toHaveBeenCalledWith({ sort: "new" });
   });

@@ -1,13 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  category: vi.fn(), tag: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(), categories: vi.fn(),
+  category: vi.fn(), tag: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(),
   requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
-  category: { findUnique: mocks.category, findMany: mocks.categories },
+  category: { findUnique: mocks.category },
   tag: { findUnique: mocks.tag }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
 } }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
@@ -16,13 +15,11 @@ vi.mock("@/components/account/account-security", () => ({ AccountSecurity: () =>
 vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, searchThreads: mocks.searchThreads, threadListInclude: {} }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/components/forum/thread-card", () => ({ ThreadCard: ({ thread }: { thread: { title: string } }) => <article>{thread.title}</article> }));
-vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Post" /> }));
-vi.mock("@/components/ui/submit-button", () => ({ SubmitButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button> }));
+vi.mock("@/components/new-thread-trigger", () => ({ NewThreadTrigger: ({ categoryId, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { categoryId?: string }) => <button data-category-id={categoryId} {...props}>{children}</button> }));
 
 import BookmarksPage from "./bookmarks/page";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[slug]/page";
 import MessagesPage from "./messages/page";
-import NewThreadPage from "./new/page";
 import SearchPage from "./search/page";
 import SettingsPage from "./settings/page";
 import SuspendedPage from "./suspended/page";
@@ -49,7 +46,7 @@ describe("category, tag, and search pages", () => {
     mocks.listThreads.mockResolvedValue([thread]);
     const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New thread" })).toHaveAttribute("href", "/new?categoryId=category");
+    expect(screen.getByRole("button", { name: "New thread" })).toHaveAttribute("data-category-id", "category");
     expect(screen.getByText("A discussion")).toBeInTheDocument();
     mocks.listThreads.mockResolvedValue([]);
     rerender(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
@@ -86,26 +83,6 @@ describe("category, tag, and search pages", () => {
 });
 
 describe("protected utility pages", () => {
-  it("renders the new discussion form with ordered categories accessibly", async () => {
-    mocks.categories.mockResolvedValue([category]);
-    const { container } = render(await NewThreadPage({ searchParams: Promise.resolve({ categoryId: "category" }) }));
-    expect(screen.getByRole("heading", { name: "Start a discussion" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "General" })).toHaveValue("category");
-    expect(screen.getByLabelText("Space")).toHaveValue("category");
-    expect(mocks.categories).toHaveBeenCalledWith({ orderBy: { position: "asc" } });
-    expect(await axe(container)).toHaveNoViolations();
-  });
-
-  it.each([
-    ["a direct visit", {}],
-    ["an unknown category", { categoryId: "missing" }],
-    ["repeated category parameters", { categoryId: ["category", "other"] }],
-  ])("leaves the space unselected for %s", async (_scenario, searchParams) => {
-    mocks.categories.mockResolvedValue([category]);
-    render(await NewThreadPage({ searchParams: Promise.resolve(searchParams) }));
-    expect(screen.getByLabelText("Space")).toHaveValue("");
-  });
-
   it("renders populated and empty bookmarks", async () => {
     mocks.bookmarks.mockResolvedValue([{ thread }]);
     const { rerender } = render(await BookmarksPage());

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Droplets, Sparkles, Users } from "lucide-react";
 import { CategoryList } from "@/components/forum/category-list";
+import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { ThreadCard } from "@/components/forum/thread-card";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
@@ -33,7 +34,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
             <div className="eyebrow mb-3 flex items-center gap-2"><Droplets size={15} /> The Teich community</div>
             <h1 className="text-3xl font-black tracking-tight sm:text-5xl">Ideas grow better<br />when we share them.</h1>
             <p className="mt-4 max-w-xl text-base leading-7 muted sm:text-lg">Ask questions, share experiments, meet other builders, and help shape the future of Teich.</p>
-            <div className="mt-6 flex flex-wrap items-center gap-3"><Link href="/new" className="button button-primary">Start a discussion <ArrowRight size={16} /></Link><span className="flex items-center gap-2 text-sm font-semibold muted"><Users size={17} /> {memberCount?.toLocaleString()} community members</span></div>
+            <div className="mt-6 flex flex-wrap items-center gap-3"><NewThreadTrigger className="button button-primary">Start a discussion <ArrowRight size={16} /></NewThreadTrigger><span className="flex items-center gap-2 text-sm font-semibold muted"><Users size={17} /> {memberCount?.toLocaleString()} community members</span></div>
           </div>
         </section>
       )}
