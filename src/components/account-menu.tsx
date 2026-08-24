@@ -6,13 +6,14 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { LogOut, Settings } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
+import type { ForumRole } from "@/lib/roles";
 
 type AccountMenuProps = {
   id: string;
   displayName: string;
   username: string;
   imageUrl: string | null;
-  role: "MEMBER" | "MODERATOR" | "ADMIN";
+  role: ForumRole;
 };
 
 function subscribeToHydration() {

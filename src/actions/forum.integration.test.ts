@@ -3,6 +3,7 @@ import type { User } from "@prisma/client";
 
 const authState = vi.hoisted(() => ({ user: null as User | null, moderator: null as User | null }));
 vi.mock("@/lib/auth", () => ({
+  getVerifiedUserRole: vi.fn(async (user: User) => user.role),
   requireUser: vi.fn(async () => authState.user),
   requireModerator: vi.fn(async () => authState.moderator ?? authState.user),
 }));

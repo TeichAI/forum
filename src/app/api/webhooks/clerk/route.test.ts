@@ -100,9 +100,10 @@ describe("Clerk webhook route", () => {
   });
 
   it.each([
-    ["user.created", null, "member_user_new", "MEMBER"],
-    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", undefined],
-  ])("processes a signed %s profile event", async (type, current, expectedUsername, expectedRole) => {
+    ["user.created", null, "member_user_new", "admin", "ADMIN"],
+    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", "moderator", "MODERATOR"],
+    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", "owner", "MEMBER"],
+  ])("processes a signed %s profile event", async (type, current, expectedUsername, publicRole, expectedRole) => {
     const secret = "whsec_dGVzdC1zZWNyZXQ=";
     const messageId = `msg_${type}`;
     const timestamp = new Date();
@@ -112,6 +113,7 @@ describe("Clerk webhook route", () => {
         id: "user_new", username: "Duplicate", first_name: "New", last_name: "Member",
         image_url: "https://example.com/avatar.png", primary_email_address_id: "email_1",
         email_addresses: [{ id: "email_1", email_address: "new@example.com" }],
+        public_metadata: { role: publicRole },
       },
     });
     vi.stubEnv("CLERK_WEBHOOK_SECRET", secret);
@@ -127,8 +129,8 @@ describe("Clerk webhook route", () => {
     expect(response.status).toBe(200);
     const args = upsertMock.mock.calls[0][0];
     expect(args.create.username).toBe(expectedUsername);
-    if (expectedRole) expect(args.create.role).toBe(expectedRole);
-    expect(args.update).toEqual({ email: "new@example.com", imageUrl: "https://example.com/avatar.png" });
+    expect(args.create.role).toBe(expectedRole);
+    expect(args.update).toEqual({ email: "new@example.com", imageUrl: "https://example.com/avatar.png", role: expectedRole });
     expect(args.create.displayName).toBe("New Member");
   });
 });

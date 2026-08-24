@@ -2,12 +2,8 @@ import { type WebhookEvent } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { db } from "@/lib/db";
+import { normalizeClerkRole } from "@/lib/roles";
 import { slugify } from "@/lib/utils";
-
-function bootstrapRole(clerkId: string) {
-  const admins = (process.env.ADMIN_CLERK_USER_IDS ?? "").split(",").map((id) => id.trim());
-  return admins.includes(clerkId) ? "ADMIN" as const : "MEMBER" as const;
-}
 
 export async function POST(request: Request) {
   const secret = process.env.CLERK_WEBHOOK_SECRET?.trim();
@@ -36,6 +32,7 @@ export async function POST(request: Request) {
 
   if (event.type === "user.created" || event.type === "user.updated") {
     const data = event.data;
+    const role = normalizeClerkRole(data.public_metadata?.role);
     const current = await db.user.findUnique({ where: { clerkId: data.id } });
     const preferred = data.username || [data.first_name, data.last_name].filter(Boolean).join(" ") || `member_${data.id.slice(-8)}`;
     let username = current?.username ?? slugify(preferred).replace(/-/g, "_").slice(0, 30);
@@ -44,8 +41,8 @@ export async function POST(request: Request) {
     const email = data.email_addresses.find((item) => item.id === data.primary_email_address_id)?.email_address;
     await db.user.upsert({
       where: { clerkId: data.id },
-      update: { email, imageUrl: data.image_url },
-      create: { clerkId: data.id, email, username, displayName: [data.first_name, data.last_name].filter(Boolean).join(" ") || username, imageUrl: data.image_url, role: bootstrapRole(data.id) },
+      update: { email, imageUrl: data.image_url, role },
+      create: { clerkId: data.id, email, username, displayName: [data.first_name, data.last_name].filter(Boolean).join(" ") || username, imageUrl: data.image_url, role },
     });
   }
   return Response.json({ ok: true });

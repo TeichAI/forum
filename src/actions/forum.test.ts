@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     db,
+    getVerifiedUserRole: vi.fn(),
     requireUser: vi.fn(),
     requireModerator: vi.fn(),
     uploadsEnabled: vi.fn(),
@@ -30,7 +31,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser, requireModerator: mocks.requireModerator }));
+vi.mock("@/lib/auth", () => ({
+  getVerifiedUserRole: mocks.getVerifiedUserRole,
+  requireUser: mocks.requireUser,
+  requireModerator: mocks.requireModerator,
+}));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: mocks.uploadsEnabled }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -38,7 +43,7 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
-  moderateReport, reportContent, sendMessage, setContentVisibility, setMemberRole,
+  moderateReport, reportContent, sendMessage, setContentVisibility,
   startConversation, suspendMember, toggleBookmark, toggleFollow, toggleReplyVote,
   toggleThreadLock, toggleThreadVote, updateReply, updateThread,
 } from "./forum";
@@ -67,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(member);
   mocks.requireModerator.mockResolvedValue(moderator);
+  mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.uploadsEnabled.mockReturnValue(false);
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => {
@@ -309,25 +315,31 @@ describe("moderation actions", () => {
   it("suspends a non-admin with an audit record and notification", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-24T12:00:00Z"));
-    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, role: "MEMBER" });
+    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, clerkId: "user_other", role: "MEMBER" });
     await suspendMember(form({ userId: ids.other, days: "2", reason: "Repeated abuse" }));
     expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.other }, data: expect.objectContaining({ status: "SUSPENDED", suspendedUntil: new Date("2026-08-26T12:00:00Z") }) });
     expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: { type: "MODERATION", recipientId: ids.other, actorId: ids.admin } });
     vi.useRealTimers();
   });
 
-  it("does not suspend missing users or administrators", async () => {
-    mocks.db.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ role: "ADMIN" });
-    for (let i = 0; i < 2; i += 1) {
+  it("does not suspend missing users, current administrators, or unverified targets", async () => {
+    mocks.db.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ clerkId: "user_admin", role: "MEMBER" })
+      .mockResolvedValueOnce({ clerkId: "user_unverified", role: "MEMBER" });
+    mocks.getVerifiedUserRole.mockResolvedValueOnce("ADMIN").mockResolvedValueOnce(null);
+    for (let i = 0; i < 3; i += 1) {
       await expect(suspendMember(form({ userId: ids.other, days: "7", reason: "Repeated abuse" }))).rejects.toThrow("cannot be suspended");
     }
   });
 
-  it("allows only admins to assign roles and prevents self-demotion", async () => {
-    mocks.requireModerator.mockResolvedValueOnce({ id: ids.admin, role: "MODERATOR" });
-    await expect(setMemberRole(form({ userId: ids.other, role: "MODERATOR" }))).rejects.toThrow("Only administrators");
-    await expect(setMemberRole(form({ userId: ids.admin, role: "MEMBER" }))).rejects.toThrow("own administrator role");
-    await setMemberRole(form({ userId: ids.other, role: "MODERATOR" }));
-    expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.other }, data: { role: "MODERATOR" } });
+  it("uses current Clerk metadata instead of a stale cached administrator role", async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, clerkId: "user_other", role: "ADMIN" });
+    mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
+    await suspendMember(form({ userId: ids.other, days: "7", reason: "Repeated abuse" }));
+    expect(mocks.db.user.update).toHaveBeenCalledWith({
+      where: { id: ids.other },
+      data: expect.objectContaining({ status: "SUSPENDED" }),
+    });
   });
 });

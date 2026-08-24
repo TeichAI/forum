@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, currentUserMock, findUniqueMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
+const { authMock, clerkClientMock, getUserMock, currentUserMock, findUniqueMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  clerkClientMock: vi.fn(),
+  getUserMock: vi.fn(),
   currentUserMock: vi.fn(),
   findUniqueMock: vi.fn(),
   upsertMock: vi.fn(),
@@ -12,6 +14,7 @@ const { authMock, currentUserMock, findUniqueMock, upsertMock, redirectMock, e2e
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: authMock,
+  clerkClient: clerkClientMock,
   currentUser: currentUserMock,
 }));
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
@@ -25,11 +28,13 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { getViewer, requireAdmin, requireModerator, requireUser, syncCurrentUser } from "./auth";
+import { getVerifiedUserRole, getViewer, requireAdmin, requireModerator, requireUser, syncCurrentUser } from "./auth";
 
 describe("syncCurrentUser", () => {
   beforeEach(() => {
     authMock.mockReset();
+    clerkClientMock.mockReset().mockResolvedValue({ users: { getUser: getUserMock } });
+    getUserMock.mockReset();
     currentUserMock.mockReset();
     findUniqueMock.mockReset();
     upsertMock.mockReset();
@@ -40,17 +45,17 @@ describe("syncCurrentUser", () => {
 
   it("returns the existing local user without fetching the Clerk profile", async () => {
     const existing = { id: "local_user", clerkId: "user_test" };
-    authMock.mockResolvedValue({ userId: "user_test" });
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: "member" } });
     findUniqueMock.mockResolvedValue(existing);
 
-    await expect(syncCurrentUser()).resolves.toBe(existing);
+    await expect(syncCurrentUser()).resolves.toEqual({ ...existing, role: "MEMBER" });
     expect(currentUserMock).not.toHaveBeenCalled();
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
   it("provisions a missing user idempotently without a webhook", async () => {
     const created = { id: "local_user", clerkId: "user_test", username: "owen_teich" };
-    authMock.mockResolvedValue({ userId: "user_test" });
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: "moderator" } });
     findUniqueMock
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
@@ -61,10 +66,11 @@ describe("syncCurrentUser", () => {
       imageUrl: "https://example.com/avatar.png",
       primaryEmailAddressId: "email_primary",
       emailAddresses: [{ id: "email_primary", emailAddress: "owen@example.com" }],
+      publicMetadata: { role: "admin" },
     });
     upsertMock.mockResolvedValue(created);
 
-    await expect(syncCurrentUser()).resolves.toBe(created);
+    await expect(syncCurrentUser()).resolves.toEqual({ ...created, role: "MODERATOR" });
     expect(upsertMock).toHaveBeenCalledWith({
       where: { clerkId: "user_test" },
       update: {},
@@ -74,7 +80,7 @@ describe("syncCurrentUser", () => {
         displayName: "Owen Teich",
         email: "owen@example.com",
         imageUrl: "https://example.com/avatar.png",
-        role: "MEMBER",
+        role: "ADMIN",
       },
     });
   });
@@ -102,15 +108,13 @@ describe("syncCurrentUser", () => {
     await expect(syncCurrentUser()).resolves.toBeNull();
   });
 
-  it("falls back to a safe username, image, and configured admin role", async () => {
-    vi.stubEnv("ADMIN_CLERK_USER_IDS", " other, admin-id ");
+  it("falls back to a safe username, image, and member role", async () => {
     authMock.mockResolvedValue({ userId: "admin-id" });
     findUniqueMock.mockResolvedValue(null);
     currentUserMock.mockResolvedValue({ username: null, firstName: null, lastName: null, imageUrl: null, primaryEmailAddressId: null, emailAddresses: [] });
     upsertMock.mockResolvedValue({ id: "created" });
     await syncCurrentUser();
-    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ username: "member", displayName: "member", email: undefined, role: "ADMIN" }) }));
-    vi.unstubAllEnvs();
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ username: "member", displayName: "member", email: undefined, role: "MEMBER" }) }));
   });
 
   it("resolves username collisions before provisioning", async () => {
@@ -133,7 +137,7 @@ describe("syncCurrentUser", () => {
     findUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(raced);
     currentUserMock.mockResolvedValue({ username: "Racer", firstName: "Race", lastName: "Winner", imageUrl: null, primaryEmailAddressId: null, emailAddresses: [] });
     upsertMock.mockRejectedValue({ code: "P2002" });
-    await expect(syncCurrentUser()).resolves.toBe(raced);
+    await expect(syncCurrentUser()).resolves.toEqual({ ...raced, role: "MEMBER" });
     expect(findUniqueMock).toHaveBeenLastCalledWith({ where: { clerkId: "race-id" } });
   });
 
@@ -151,6 +155,8 @@ describe("viewer authorization", () => {
     e2eUserMock.mockReset().mockResolvedValue(null);
     e2eModeMock.mockReset().mockReturnValue(false);
     authMock.mockReset();
+    clerkClientMock.mockReset().mockResolvedValue({ users: { getUser: getUserMock } });
+    getUserMock.mockReset();
     findUniqueMock.mockReset();
     redirectMock.mockReset().mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   });
@@ -158,6 +164,30 @@ describe("viewer authorization", () => {
   it("returns the synchronized viewer", async () => {
     authMock.mockResolvedValue({ userId: null });
     await expect(getViewer()).resolves.toBeNull();
+  });
+
+  it.each([
+    ["moderator", "MEMBER", "MODERATOR"],
+    ["member", "ADMIN", "MEMBER"],
+  ] as const)("uses a %s session claim instead of a stale %s cache", async (claim, cached, expected) => {
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: claim } });
+    findUniqueMock.mockResolvedValue({ id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: cached });
+    await expect(requireUser()).resolves.toEqual(expect.objectContaining({ role: expected }));
+  });
+
+  it.each([
+    ["moderator", "MODERATOR"],
+    ["admin", "ADMIN"],
+  ] as const)("allows a %s session claim to moderate despite a member cache", async (claim, expected) => {
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: claim } });
+    findUniqueMock.mockResolvedValue({ id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: "MEMBER" });
+    await expect(requireModerator()).resolves.toEqual(expect.objectContaining({ role: expected }));
+  });
+
+  it("revokes stale cached staff authority when the session claim is missing", async () => {
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: {} });
+    findUniqueMock.mockResolvedValue({ id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: "ADMIN" });
+    await expect(requireModerator()).rejects.toThrow("redirect:/");
   });
 
   it("redirects signed-out, deleted, and actively suspended users", async () => {
@@ -204,5 +234,35 @@ describe("viewer authorization", () => {
 
     await expect(requireAdmin()).resolves.toEqual(expect.objectContaining({ role: "ADMIN" }));
     await expect(requireAdmin()).rejects.toThrow("redirect:/");
+  });
+});
+
+describe("getVerifiedUserRole", () => {
+  beforeEach(() => {
+    e2eModeMock.mockReset().mockReturnValue(false);
+    clerkClientMock.mockReset().mockResolvedValue({ users: { getUser: getUserMock } });
+    getUserMock.mockReset();
+  });
+
+  it("reads and normalizes current Clerk public metadata", async () => {
+    getUserMock.mockResolvedValue({ publicMetadata: { role: "admin" } });
+    await expect(getVerifiedUserRole({ clerkId: "user_target", role: "MEMBER" })).resolves.toBe("ADMIN");
+    expect(getUserMock).toHaveBeenCalledWith("user_target");
+  });
+
+  it("treats a missing Clerk metadata role as member", async () => {
+    getUserMock.mockResolvedValue({ publicMetadata: {} });
+    await expect(getVerifiedUserRole({ clerkId: "user_target", role: "ADMIN" })).resolves.toBe("MEMBER");
+  });
+
+  it("fails closed when Clerk cannot verify the user", async () => {
+    getUserMock.mockRejectedValue(new Error("Clerk unavailable"));
+    await expect(getVerifiedUserRole({ clerkId: "user_target", role: "MEMBER" })).resolves.toBeNull();
+  });
+
+  it("keeps E2E role verification database-backed", async () => {
+    e2eModeMock.mockReturnValue(true);
+    await expect(getVerifiedUserRole({ clerkId: "e2e_admin", role: "ADMIN" })).resolves.toBe("ADMIN");
+    expect(clerkClientMock).not.toHaveBeenCalled();
   });
 });

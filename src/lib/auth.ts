@@ -1,17 +1,10 @@
 import "server-only";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getE2ETestUserId, isE2ETestMode } from "@/lib/e2e-auth";
+import { type ForumRole, normalizeClerkRole } from "@/lib/roles";
 import { slugify } from "@/lib/utils";
-
-function isBootstrapAdmin(clerkId: string) {
-  return (process.env.ADMIN_CLERK_USER_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .includes(clerkId);
-}
 
 async function availableUsername(candidate: string, clerkId: string) {
   const base = slugify(candidate).replace(/-/g, "_").slice(0, 24) || "member";
@@ -28,11 +21,12 @@ export async function syncCurrentUser() {
     const testUserId = await getE2ETestUserId();
     return testUserId ? db.user.findUnique({ where: { id: testUserId } }) : null;
   }
-  const { userId } = await auth();
+  const { userId, sessionClaims } = await auth();
   if (!userId) return null;
+  const authorityRole = normalizeClerkRole(sessionClaims?.forum_role);
 
   const existing = await db.user.findUnique({ where: { clerkId: userId } });
-  if (existing) return existing;
+  if (existing) return { ...existing, role: authorityRole };
 
   const clerkUser = await currentUser();
   if (!clerkUser) return null;
@@ -41,7 +35,7 @@ export async function syncCurrentUser() {
   const email = clerkUser.emailAddresses.find((item) => item.id === clerkUser.primaryEmailAddressId)?.emailAddress;
 
   try {
-    return await db.user.upsert({
+    const user = await db.user.upsert({
       where: { clerkId: userId },
       update: {},
       create: {
@@ -50,15 +44,26 @@ export async function syncCurrentUser() {
         displayName: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || username,
         email,
         imageUrl: clerkUser.imageUrl,
-        role: isBootstrapAdmin(userId) ? "ADMIN" : "MEMBER",
+        role: normalizeClerkRole(clerkUser.publicMetadata?.role),
       },
     });
+    return { ...user, role: authorityRole };
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
       const raced = await db.user.findUnique({ where: { clerkId: userId } });
-      if (raced) return raced;
+      if (raced) return { ...raced, role: authorityRole };
     }
     throw error;
+  }
+}
+
+export async function getVerifiedUserRole(user: { clerkId: string; role: ForumRole }): Promise<ForumRole | null> {
+  if (isE2ETestMode()) return user.role;
+  try {
+    const clerkUser = await (await clerkClient()).users.getUser(user.clerkId);
+    return normalizeClerkRole(clerkUser.publicMetadata?.role);
+  } catch {
+    return null;
   }
 }
 

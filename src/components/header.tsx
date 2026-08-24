@@ -5,13 +5,14 @@ import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
 import type { ClerkAccessMode } from "@/lib/access-mode";
+import type { ForumRole } from "@/lib/roles";
 
 export type HeaderViewer = {
   id: string;
   displayName: string;
   username: string;
   imageUrl: string | null;
-  role: "MEMBER" | "MODERATOR" | "ADMIN";
+  role: ForumRole;
 };
 
 export async function Header({ viewer, accessMode = "public" }: { viewer: HeaderViewer | null; accessMode?: ClerkAccessMode }) {

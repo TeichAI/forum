@@ -95,7 +95,7 @@ describe("discussion page", () => {
 });
 
 describe("member profile", () => {
-  it("generates metadata and renders admin controls for another member", async () => {
+  it("generates metadata and renders member actions without role-management controls", async () => {
     mocks.user.mockResolvedValue({ ...other, _count: { followers: 2, following: 3, threads: 4, replies: 5 }, followers: [] });
     await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual({ title: "Other" });
     mocks.viewer.mockResolvedValue(admin);
@@ -103,7 +103,7 @@ describe("member profile", () => {
     render(await MemberPage({ params: Promise.resolve({ id: "other" }) }));
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Message" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Update role" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update role" })).not.toBeInTheDocument();
     expect(screen.getByText("Recent topic")).toBeInTheDocument();
   });
 

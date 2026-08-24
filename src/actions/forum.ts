@@ -4,7 +4,7 @@ import { NotificationType, ReportTargetType } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireModerator, requireUser } from "@/lib/auth";
+import { getVerifiedUserRole, requireModerator, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils";
@@ -305,7 +305,9 @@ export async function suspendMember(formData: FormData) {
   const days = z.coerce.number().int().min(1).max(365).parse(formData.get("days") ?? 7);
   const reason = z.string().trim().min(3).max(500).parse(formData.get("reason"));
   const target = await db.user.findUnique({ where: { id: userId } });
-  if (!target || target.role === "ADMIN") throw new Error("This member cannot be suspended");
+  if (!target) throw new Error("This member cannot be suspended");
+  const targetRole = await getVerifiedUserRole(target);
+  if (!targetRole || targetRole === "ADMIN") throw new Error("This member cannot be suspended");
   const until = new Date(Date.now() + days * 86_400_000);
   await db.$transaction([
     db.user.update({ where: { id: userId }, data: { status: "SUSPENDED", suspendedUntil: until, suspensionReason: reason } }),
@@ -313,14 +315,4 @@ export async function suspendMember(formData: FormData) {
     db.notification.create({ data: { type: NotificationType.MODERATION, recipientId: userId, actorId: moderator.id } }),
   ]);
   revalidatePath("/moderation");
-}
-
-export async function setMemberRole(formData: FormData) {
-  const admin = await requireModerator();
-  if (admin.role !== "ADMIN") throw new Error("Only administrators can change staff roles");
-  const userId = z.string().cuid().parse(formData.get("userId"));
-  const role = z.enum(["MEMBER", "MODERATOR", "ADMIN"]).parse(formData.get("role"));
-  if (userId === admin.id && role !== "ADMIN") throw new Error("You cannot remove your own administrator role");
-  await db.user.update({ where: { id: userId }, data: { role } });
-  revalidatePath(`/members/${userId}`);
 }
