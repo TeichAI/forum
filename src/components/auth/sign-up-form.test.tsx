@@ -124,6 +124,20 @@ describe("SignUpForm account details", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("We couldn't create your account.");
   });
 
+  it.each([
+    ["sign_up_mode_restricted", "secure link in your invitation email", null],
+    ["sign_up_restricted_waitlist", "Join the waitlist", "/waitlist"],
+  ] as const)("shows an actionable %s restriction", async (code, copy, href) => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook();
+    hook.signUp.password.mockResolvedValue({ error: { code, longMessage: "Signup unavailable." } });
+    renderForm(hook);
+    await enterAccount(user);
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByText(new RegExp(copy, "i"))).toBeInTheDocument();
+    if (href) expect(screen.getByRole("link", { name: copy })).toHaveAttribute("href", href);
+  });
+
   it("finalizes direct completion and reports finalization errors", async () => {
     const user = userEvent.setup();
     const hook = createSignUpHook({ signUp: { status: "complete", unverifiedFields: [] } });

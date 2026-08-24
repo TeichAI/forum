@@ -19,6 +19,8 @@ services:
   forum:
     build:
       context: .
+      args:
+        NEXT_PUBLIC_CLERK_ACCESS_MODE: ${NEXT_PUBLIC_CLERK_ACCESS_MODE:-public}
       secrets:
         - app_env
     env_file:
@@ -26,6 +28,7 @@ services:
     environment:
       DATABASE_URL: postgresql://teich:teich@database:5432/teich_forum?schema=public
       NEXT_PUBLIC_APP_URL: http://localhost:${FORUM_PORT:-3000}
+      NEXT_PUBLIC_CLERK_ACCESS_MODE: ${NEXT_PUBLIC_CLERK_ACCESS_MODE:-public}
     ports:
       - "${FORUM_PORT:-3000}:3000"
     depends_on:

@@ -11,6 +11,18 @@ A community forum for Teich, built with Next.js, Clerk, and PostgreSQL/Prisma. U
 
 Signed-in users are added to the local database on their first visit, so local development does not require a webhook or a public tunnel. The first matching Clerk ID in `ADMIN_CLERK_USER_IDS` is promoted to administrator when their local user record is created or synchronized.
 
+## Clerk access modes
+
+The custom authentication UI supports Clerk's Open, Invite-only, and Waitlist access modes. Set `NEXT_PUBLIC_CLERK_ACCESS_MODE` to the matching Clerk API value:
+
+- `public` for Open mode. The existing email/password and GitHub signup form remains available.
+- `restricted` for Invite-only mode. Ordinary signup shows an invitation-required page, while Clerk invitation links are accepted by the custom auth routes.
+- `waitlist` for Waitlist mode. Signed-out calls to action lead to the custom `/waitlist` form, and approved users finish signup from the invitation link Clerk emails them.
+
+This public setting is compiled into the browser bundle. Change the Access mode in the Clerk Dashboard and `NEXT_PUBLIC_CLERK_ACCESS_MODE` together, then rebuild the app. Missing configuration defaults to `public`; invalid values stop the app with a configuration error. Waitlist mode also requires email to be enabled in Clerk so approved users can receive their invitations. Invitations and waitlist approvals remain managed in the Clerk Dashboard.
+
+For Docker Compose, export the mode before building when it is not `public`, for example `NEXT_PUBLIC_CLERK_ACCESS_MODE=waitlist docker compose up --build`.
+
 ## Docker Compose
 
 1. Copy `.env.example` to `.env.local` and add your Clerk credentials. `UPLOADTHING_TOKEN` remains optional. The Compose network supplies its own `DATABASE_URL`, so the value in `.env.local` is ignored by the running container.

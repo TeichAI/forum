@@ -6,7 +6,7 @@ import { ArrowLeft, MailCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput, FieldMessage, FormAlert, PasswordInput, SubmitButton } from "./auth-controls";
-import { clerkErrorMessage, safeRedirect, ssoCallbackUrl } from "./auth-utils";
+import { clerkErrorMessage, restrictedModeFromClerkError, safeRedirect, ssoCallbackUrl } from "./auth-utils";
 import { SocialConnections, type SocialConnection } from "./social-connections";
 
 const SUPPORTED_SSO_FIELDS = new Set(["email_address", "first_name", "last_name", "legal_accepted"]);
@@ -26,6 +26,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [code, setCode] = useState("");
   const [localError, setLocalError] = useState("");
+  const [blockedMode, setBlockedMode] = useState<"restricted" | "waitlist" | null>(null);
   const busy = fetchStatus === "fetching" || ssoBusy;
   const missingFields = signUp.missingFields;
   const showFirstName = continuingSso ? missingFields.includes("first_name") : signUp.requiredFields.includes("first_name") || signUp.optionalFields.includes("first_name");
@@ -73,6 +74,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
 
   async function handleSocial(connection: SocialConnection) {
     setLocalError("");
+    setBlockedMode(null);
     setSsoBusy(true);
     const { error } = await signUp.sso({
       strategy: connection.strategy,
@@ -80,6 +82,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       redirectCallbackUrl: ssoCallbackUrl("sign-up", redirectUrl),
     });
     if (error) {
+      setBlockedMode(restrictedModeFromClerkError(error));
       setLocalError(clerkErrorMessage(error, `We couldn't connect to ${connection.name}.`));
       setSsoBusy(false);
     }
@@ -88,6 +91,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
+    setBlockedMode(null);
     if (password !== confirmPassword) return setLocalError("Those passwords do not match.");
     if (requiresLegal && !acceptedTerms) return setLocalError("Please accept the account terms to continue.");
 
@@ -98,7 +102,10 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       ...(showLastName && lastName ? { lastName } : {}),
       ...(requiresLegal ? { legalAccepted: acceptedTerms } : {}),
     });
-    if (error) return setLocalError(clerkErrorMessage(error, "We couldn't create your account."));
+    if (error) {
+      setBlockedMode(restrictedModeFromClerkError(error));
+      return setLocalError(clerkErrorMessage(error, "We couldn't create your account."));
+    }
     if (signUp.status === "complete") return finish();
 
     if (signUp.unverifiedFields.includes("email_address")) {
@@ -190,6 +197,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
     <>
       {!continuingSso && <SocialConnections busy={busy} onConnect={handleSocial} />}
       <FormAlert>{localError || globalError}</FormAlert>
+      {blockedMode && <p className="mb-5 text-sm leading-6 muted">{blockedMode === "waitlist" ? <>Teich is currently using a waitlist. <Link href="/waitlist" className="font-extrabold" style={{ color: "var(--brand)" }}>Join the waitlist</Link> to request access.</> : "Use the secure link in your invitation email to create your account."}</p>}
       <form onSubmit={continuingSso ? handleSsoSubmit : handleSubmit} noValidate>
         {(showFirstName || showLastName) && (
           <div className="grid gap-4 sm:grid-cols-2">

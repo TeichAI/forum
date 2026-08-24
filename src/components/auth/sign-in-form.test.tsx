@@ -111,6 +111,17 @@ describe("SignInForm password flow", () => {
     expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Create an account" })).toHaveAttribute("href", "/sign-up");
   });
+
+  it("adapts the access action for waitlist and restricted modes", () => {
+    state.hook = createSignInHook();
+    const first = render(<SignInForm redirectUrl="/settings" accessMode="waitlist" />);
+    expect(screen.getByRole("link", { name: "Join the waitlist" })).toHaveAttribute("href", "/waitlist");
+    first.unmount();
+
+    state.hook = createSignInHook();
+    render(<SignInForm redirectUrl="/settings" accessMode="restricted" />);
+    expect(screen.getByRole("link", { name: "Learn more" })).toHaveAttribute("href", "/sign-up?redirect_url=%2Fsettings");
+  });
 });
 
 describe("SignInForm GitHub SSO", () => {

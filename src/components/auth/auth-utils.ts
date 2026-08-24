@@ -2,7 +2,31 @@ export function clerkErrorMessage(error: unknown, fallback = "Something went wro
   if (!error || typeof error !== "object") return fallback;
   if ("longMessage" in error && typeof error.longMessage === "string") return error.longMessage;
   if ("message" in error && typeof error.message === "string") return error.message;
+  if ("errors" in error && Array.isArray(error.errors)) {
+    const first = error.errors[0];
+    if (first && typeof first === "object") {
+      if ("longMessage" in first && typeof first.longMessage === "string") return first.longMessage;
+      if ("message" in first && typeof first.message === "string") return first.message;
+    }
+  }
   return fallback;
+}
+
+export function clerkErrorCode(error: unknown) {
+  if (!error || typeof error !== "object") return undefined;
+  if ("code" in error && typeof error.code === "string") return error.code;
+  if ("errors" in error && Array.isArray(error.errors)) {
+    const first = error.errors[0];
+    if (first && typeof first === "object" && "code" in first && typeof first.code === "string") return first.code;
+  }
+  return undefined;
+}
+
+export function restrictedModeFromClerkError(error: unknown) {
+  const code = clerkErrorCode(error);
+  if (code === "sign_up_mode_restricted") return "restricted" as const;
+  if (code === "sign_up_restricted_waitlist") return "waitlist" as const;
+  return null;
 }
 
 export function safeRedirect(value?: string | string[]) {

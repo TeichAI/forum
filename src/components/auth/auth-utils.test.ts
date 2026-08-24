@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authFormUrl, clerkErrorMessage, safeRedirect, ssoCallbackUrl } from "./auth-utils";
+import { authFormUrl, clerkErrorCode, clerkErrorMessage, restrictedModeFromClerkError, safeRedirect, ssoCallbackUrl } from "./auth-utils";
 
 describe("safeRedirect", () => {
   it.each(["/", "/settings", "/t/welcome?reply=1#latest", "/search?q=pond%20life"])("keeps the local path %s", (path) => {
@@ -31,6 +31,15 @@ describe("safeRedirect", () => {
 describe("clerkErrorMessage", () => {
   it("prefers Clerk's user-facing message", () => {
     expect(clerkErrorMessage({ message: "Internal detail", longMessage: "Check your email and try again." })).toBe("Check your email and try again.");
+  });
+
+  it("reads nested Clerk response errors and restriction codes", () => {
+    const error = { errors: [{ code: "sign_up_restricted_waitlist", longMessage: "Join the list." }] };
+    expect(clerkErrorMessage(error)).toBe("Join the list.");
+    expect(clerkErrorCode(error)).toBe("sign_up_restricted_waitlist");
+    expect(restrictedModeFromClerkError(error)).toBe("waitlist");
+    expect(restrictedModeFromClerkError({ code: "sign_up_mode_restricted" })).toBe("restricted");
+    expect(restrictedModeFromClerkError({ code: "different" })).toBeNull();
   });
 
   it("uses a normal message when no long message exists", () => {

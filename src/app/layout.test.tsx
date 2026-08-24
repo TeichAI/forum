@@ -1,10 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ mode: vi.fn(), viewer: vi.fn(), categories: vi.fn(), uploads: vi.fn() }));
+const mocks = vi.hoisted(() => ({ mode: vi.fn(), viewer: vi.fn(), categories: vi.fn(), uploads: vi.fn(), accessMode: vi.fn() }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer }));
 vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.categories } } }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: mocks.uploads }));
+vi.mock("@/lib/access-mode", () => ({ getClerkAccessMode: mocks.accessMode }));
 vi.mock("@/components/header", () => ({ Header: ({ viewer }: { viewer: unknown }) => <header data-viewer={JSON.stringify(viewer)}>Header</header> }));
 vi.mock("@/components/new-thread-dialog", () => ({ NewThreadDialogProvider: ({ children, ...props }: { children: React.ReactNode }) => <div data-provider={JSON.stringify(props)}>{children}</div> }));
 vi.mock("@clerk/nextjs", () => ({ ClerkProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="clerk-provider">{children}</div> }));
@@ -16,12 +17,13 @@ beforeEach(() => {
   mocks.viewer.mockResolvedValue(null);
   mocks.categories.mockResolvedValue([]);
   mocks.uploads.mockReturnValue(false);
+  mocks.accessMode.mockReturnValue("waitlist");
 });
 
 it("publishes site metadata and wraps normal rendering with Clerk", async () => {
   mocks.mode.mockReturnValue(false);
   const result = await RootLayout({ children: <p>Page</p> });
-  expect(result.props).toEqual(expect.objectContaining({ signInUrl: "/sign-in", signUpUrl: "/sign-up" }));
+  expect(result.props).toEqual(expect.objectContaining({ signInUrl: "/sign-in", signUpUrl: "/sign-up", waitlistUrl: "/waitlist" }));
   expect(metadata.description).toMatch(/community space/);
 });
 

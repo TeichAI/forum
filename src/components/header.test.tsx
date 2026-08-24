@@ -21,6 +21,14 @@ describe("Header", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
+  it.each([
+    ["restricted", "Invitation only", "/sign-up"],
+    ["waitlist", "Join waitlist", "/waitlist"],
+  ] as const)("renders the %s access call to action", async (accessMode, label, href) => {
+    render(await Header({ viewer: null, accessMode }));
+    expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
+  });
+
   it.each(["MEMBER", "MODERATOR", "ADMIN"])("renders %s controls and unread state", async (role) => {
     mocks.unread.mockResolvedValue(3);
     render(await Header({ viewer: { id: "user", displayName: "Owen Example", username: "owen", imageUrl: "https://img.clerk.com/avatar.png", role: role as "MEMBER" | "MODERATOR" | "ADMIN" } }));

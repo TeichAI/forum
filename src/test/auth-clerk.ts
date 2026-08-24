@@ -20,6 +20,7 @@ export function createSignInHook(overrides: Record<string, unknown> = {}) {
     supportedFirstFactors: [] as Array<{ strategy: string }>,
     supportedSecondFactors: [] as Array<{ strategy: string }>,
     password: succeeds(),
+    ticket: succeeds(),
     sso: succeeds(),
     create: succeeds(),
     finalize: succeeds(),
@@ -62,6 +63,7 @@ export function createSignUpHook(overrides: Record<string, unknown> = {}) {
     firstName: null as string | null,
     lastName: null as string | null,
     password: succeeds(),
+    ticket: succeeds(),
     sso: succeeds(),
     create: succeeds(),
     update: succeeds(),
@@ -76,6 +78,24 @@ export function createSignUpHook(overrides: Record<string, unknown> = {}) {
 
   return {
     signUp,
+    errors: createClerkErrors(),
+    fetchStatus: "idle",
+    ...hookOverrides,
+  };
+}
+
+export function createWaitlistHook(overrides: Record<string, unknown> = {}) {
+  const { waitlist: waitlistOverrides, ...hookOverrides } = overrides;
+  const waitlist = {
+    id: "",
+    createdAt: null,
+    updatedAt: null,
+    join: succeeds(),
+    ...(waitlistOverrides as object | undefined),
+  };
+
+  return {
+    waitlist,
     errors: createClerkErrors(),
     fetchStatus: "idle",
     ...hookOverrides,

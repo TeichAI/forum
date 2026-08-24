@@ -4,6 +4,7 @@ import { AccountMenu } from "@/components/account-menu";
 import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
+import type { ClerkAccessMode } from "@/lib/access-mode";
 
 export type HeaderViewer = {
   id: string;
@@ -13,7 +14,7 @@ export type HeaderViewer = {
   role: "MEMBER" | "MODERATOR" | "ADMIN";
 };
 
-export async function Header({ viewer }: { viewer: HeaderViewer | null }) {
+export async function Header({ viewer, accessMode = "public" }: { viewer: HeaderViewer | null; accessMode?: ClerkAccessMode }) {
   const unread = viewer ? await db.notification.count({ where: { recipientId: viewer.id, readAt: null } }) : 0;
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--background) 86%, transparent)" }}>
@@ -37,7 +38,9 @@ export async function Header({ viewer }: { viewer: HeaderViewer | null }) {
             {isE2ETestMode() ? <span className="pill ml-1">Test user</span> : <AccountMenu id={viewer.id} displayName={viewer.displayName} username={viewer.username} imageUrl={viewer.imageUrl} role={viewer.role} />}
           </> : <>
             <Link href="/sign-in" className="button button-secondary">Sign in</Link>
-            <Link href="/sign-up" className="button button-primary">Join Teich</Link>
+            <Link href={accessMode === "waitlist" ? "/waitlist" : "/sign-up"} className="button button-primary">
+              {accessMode === "waitlist" ? "Join waitlist" : accessMode === "restricted" ? "Invitation only" : "Join Teich"}
+            </Link>
           </>}
         </nav>
       </div>

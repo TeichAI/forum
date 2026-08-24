@@ -8,11 +8,12 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput, FieldMessage, FormAlert, PasswordInput, SubmitButton } from "./auth-controls";
 import { clerkErrorMessage, safeRedirect, ssoCallbackUrl } from "./auth-utils";
 import { SocialConnections, type SocialConnection } from "./social-connections";
+import type { ClerkAccessMode } from "@/lib/access-mode";
 
 type Step = "password" | "forgot-code" | "new-password" | "mfa";
 type MfaStrategy = "email" | "phone" | "totp" | "backup";
 
-export function SignInForm({ redirectUrl, ssoContinuation = false }: { redirectUrl: string; ssoContinuation?: boolean }) {
+export function SignInForm({ redirectUrl, ssoContinuation = false, accessMode = "public" }: { redirectUrl: string; ssoContinuation?: boolean; accessMode?: ClerkAccessMode }) {
   const { signIn, errors, fetchStatus } = useSignIn();
   const router = useRouter();
   const resumedSso = useRef(false);
@@ -26,7 +27,9 @@ export function SignInForm({ redirectUrl, ssoContinuation = false }: { redirectU
   const [mfaStrategy, setMfaStrategy] = useState<MfaStrategy>("totp");
   const [localError, setLocalError] = useState("");
   const busy = fetchStatus === "fetching" || ssoBusy;
-  const signUpHref = redirectUrl === "/" ? "/sign-up" : `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
+  const signUpHref = accessMode === "waitlist"
+    ? "/waitlist"
+    : redirectUrl === "/" ? "/sign-up" : `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
 
   const finish = useCallback(async () => {
     const { error } = await signIn.finalize({
@@ -211,7 +214,11 @@ export function SignInForm({ redirectUrl, ssoContinuation = false }: { redirectU
         </div>
         <SubmitButton busy={busy} busyLabel="Signing in…">Sign in</SubmitButton>
       </form>
-      <p className="mt-7 text-center text-sm muted">New to Teich? <Link href={signUpHref} className="font-extrabold" style={{ color: "var(--brand)" }}>Create an account</Link></p>
+      <p className="mt-7 text-center text-sm muted">
+        {accessMode === "waitlist" ? <>Need access? <Link href={signUpHref} className="font-extrabold" style={{ color: "var(--brand)" }}>Join the waitlist</Link></>
+          : accessMode === "restricted" ? <>Access is invitation only. <Link href={signUpHref} className="font-extrabold" style={{ color: "var(--brand)" }}>Learn more</Link></>
+            : <>New to Teich? <Link href={signUpHref} className="font-extrabold" style={{ color: "var(--brand)" }}>Create an account</Link></>}
+      </p>
     </>
   );
 }

@@ -6,6 +6,7 @@ import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
 import { uploadsEnabled } from "@/lib/upload-capability";
+import { getClerkAccessMode } from "@/lib/access-mode";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const accessMode = getClerkAccessMode();
   const viewer = await getViewer();
   const categories = viewer
     ? await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } })
@@ -26,11 +28,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     role: viewer.role,
   } : null;
   const content = (
-    <html lang="en"><body><NewThreadDialogProvider isAuthenticated={Boolean(viewer)} categories={categories} uploadsEnabled={Boolean(viewer) && uploadsEnabled()}><Header viewer={headerViewer} /><main>{children}</main><footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer></NewThreadDialogProvider></body></html>
+    <html lang="en"><body><NewThreadDialogProvider isAuthenticated={Boolean(viewer)} categories={categories} uploadsEnabled={Boolean(viewer) && uploadsEnabled()}><Header viewer={headerViewer} accessMode={accessMode} /><main>{children}</main><footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer></NewThreadDialogProvider></body></html>
   );
   if (isE2ETestMode()) return content;
   return (
-    <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
+    <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" waitlistUrl="/waitlist" signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
       {content}
     </ClerkProvider>
   );
