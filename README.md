@@ -4,13 +4,12 @@ A community forum for Teich, built with Next.js, Clerk, and PostgreSQL/Prisma. U
 
 ## Local setup
 
-1. Copy `.env.example` to `.env.local` and fill in the Clerk and PostgreSQL credentials. Add `UPLOADTHING_TOKEN` only if image uploads should be enabled.
+1. Copy `.env.example` to `.env.local` and fill in the Clerk and PostgreSQL credentials. `CLERK_WEBHOOK_SECRET` and `UPLOADTHING_TOKEN` can remain blank for normal local development.
 2. Install dependencies with `npm install`.
 3. Create the schema with `npm run db:push` and seed starter categories with `npm run db:seed`.
-4. In Clerk, point a webhook at `/api/webhooks/clerk` and subscribe to `user.created`, `user.updated`, and `user.deleted`.
-5. Start the app with `npm run dev`.
+4. Start the app with `npm run dev`.
 
-The first matching Clerk ID in `ADMIN_CLERK_USER_IDS` is promoted to administrator when their local user record is created or synchronized.
+Signed-in users are added to the local database on their first visit, so local development does not require a webhook or a public tunnel. The first matching Clerk ID in `ADMIN_CLERK_USER_IDS` is promoted to administrator when their local user record is created or synchronized.
 
 ## Docker Compose
 
@@ -21,6 +20,12 @@ The first matching Clerk ID in `ADMIN_CLERK_USER_IDS` is promoted to administrat
 The forum waits for PostgreSQL to be healthy, applies committed Prisma migrations, and seeds the starter categories before it starts. Database data is kept in a named volume across restarts. Run `docker compose down` to stop the stack, or `docker compose down --volumes` to also reset its database.
 
 Set `FORUM_PORT` or `POSTGRES_PORT` in your shell to change the exposed ports. To use a different environment file, set `FORUM_ENV_FILE` to its path before running Compose.
+
+## Optional Clerk webhook synchronization
+
+Webhook synchronization is recommended in production so Clerk profile changes and account deletions are reflected in the forum database. In the Clerk Dashboard, create an endpoint for `https://your-domain.example/api/webhooks/clerk`, subscribe it to `user.created`, `user.updated`, and `user.deleted`, and set its signing secret as `CLERK_WEBHOOK_SECRET` in the deployed environment.
+
+When `CLERK_WEBHOOK_SECRET` is blank or absent, the webhook endpoint is disabled and returns `404`. To test webhooks locally, set the secret and expose the local endpoint with a tunnel.
 
 ## Optional image uploads
 

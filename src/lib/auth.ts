@@ -35,8 +35,10 @@ export async function syncCurrentUser() {
   const username = await availableUsername(preferred, userId);
   const email = clerkUser.emailAddresses.find((item) => item.id === clerkUser.primaryEmailAddressId)?.emailAddress;
 
-  return db.user.create({
-    data: {
+  return db.user.upsert({
+    where: { clerkId: userId },
+    update: {},
+    create: {
       clerkId: userId,
       username,
       displayName: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || username,

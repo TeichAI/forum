@@ -10,8 +10,8 @@ function bootstrapRole(clerkId: string) {
 }
 
 export async function POST(request: Request) {
-  const secret = process.env.CLERK_WEBHOOK_SECRET;
-  if (!secret) return Response.json({ error: "Webhook secret is not configured" }, { status: 500 });
+  const secret = process.env.CLERK_WEBHOOK_SECRET?.trim();
+  if (!secret) return Response.json({ error: "Webhook endpoint is disabled" }, { status: 404 });
   const headerList = await headers();
   const svixId = headerList.get("svix-id");
   const svixTimestamp = headerList.get("svix-timestamp");
