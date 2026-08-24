@@ -17,11 +17,7 @@ export function AuthShell({ children, eyebrow, title, description }: AuthShellPr
           <div className="absolute -right-4 top-8 h-44 w-44 rounded-full border border-white/10" />
           <div className="absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-white/[0.04]" />
 
-          <Link href="/" className="relative flex items-center gap-3 font-black tracking-tight" aria-label="Teich Forum home">
-            <span className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-full bg-white/15 ring-1 ring-white/20">
-              <span className="absolute h-4 w-7 translate-y-1 rounded-[50%] border-2 border-white/80" />
-              <span className="absolute h-2 w-4 -translate-y-1 rounded-[50%] bg-white/90" />
-            </span>
+          <Link href="/" className="relative flex items-center font-black tracking-tight" aria-label="Teich Forum home">
             <span className="text-lg">Teich Forum</span>
           </Link>
 
@@ -44,12 +40,8 @@ export function AuthShell({ children, eyebrow, title, description }: AuthShellPr
 
         <section className="flex min-h-[620px] items-center px-5 py-9 sm:px-12 sm:py-12 lg:px-16">
           <div className="mx-auto w-full max-w-md">
-            <Link href="/" className="mb-9 inline-flex items-center gap-2 font-black tracking-tight lg:hidden" aria-label="Teich Forum home">
-              <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-full" style={{ background: "var(--brand)" }}>
-                <span className="absolute h-4 w-7 translate-y-1 rounded-[50%] border-2 border-white/80" />
-                <span className="absolute h-2 w-4 -translate-y-1 rounded-[50%] bg-white/90" />
-              </span>
-              Teich <span style={{ color: "var(--brand)" }}>Forum</span>
+            <Link href="/" className="mb-9 inline-flex items-center font-black tracking-tight lg:hidden" aria-label="Teich Forum home">
+              <span>Teich <span style={{ color: "var(--brand)" }}>Forum</span></span>
             </Link>
             <div className="eyebrow mb-2">{eyebrow}</div>
             <h1 className="text-3xl font-black tracking-tight sm:text-[2.1rem]">{title}</h1>
@@ -61,4 +53,3 @@ export function AuthShell({ children, eyebrow, title, description }: AuthShellPr
     </div>
   );
 }
-

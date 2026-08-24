@@ -10,11 +10,7 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--background) 86%, transparent)" }}>
       <div className="shell flex h-16 items-center gap-4">
-        <Link href="/" className="mr-2 flex items-center gap-2" aria-label="Teich Forum home">
-          <span className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-full" style={{ background: "var(--brand)" }}>
-            <span className="absolute h-4 w-7 translate-y-1 rounded-[50%] border-2 border-white/80" />
-            <span className="absolute h-2 w-4 -translate-y-1 rounded-[50%] bg-white/90" />
-          </span>
+        <Link href="/" className="mr-2 flex items-center" aria-label="Teich Forum home">
           <span className="text-[1.05rem] font-black tracking-tight">Teich <span style={{ color: "var(--brand)" }}>Forum</span></span>
         </Link>
         <form action="/search" className="desktop-only relative ml-auto w-full max-w-sm">

@@ -15,8 +15,12 @@ export function createSignInHook(overrides: Record<string, unknown> = {}) {
   const { signIn: signInOverrides, ...hookOverrides } = overrides;
   const signIn = {
     status: "needs_first_factor",
+    isTransferable: false,
+    existingSession: undefined as { sessionId: string } | undefined,
+    supportedFirstFactors: [] as Array<{ strategy: string }>,
     supportedSecondFactors: [] as Array<{ strategy: string }>,
     password: succeeds(),
+    sso: succeeds(),
     create: succeeds(),
     finalize: succeeds(),
     reset: succeeds(),
@@ -48,10 +52,19 @@ export function createSignUpHook(overrides: Record<string, unknown> = {}) {
   const { signUp: signUpOverrides, ...hookOverrides } = overrides;
   const signUp = {
     status: "missing_requirements",
+    isTransferable: false,
+    existingSession: undefined as { sessionId: string } | undefined,
     requiredFields: [] as string[],
     optionalFields: [] as string[],
+    missingFields: [] as string[],
     unverifiedFields: ["email_address"] as string[],
+    emailAddress: null as string | null,
+    firstName: null as string | null,
+    lastName: null as string | null,
     password: succeeds(),
+    sso: succeeds(),
+    create: succeeds(),
+    update: succeeds(),
     finalize: succeeds(),
     reset: succeeds(),
     verifications: {

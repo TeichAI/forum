@@ -4,36 +4,40 @@ import Link from "next/link";
 import { useSignIn } from "@clerk/nextjs";
 import { ArrowLeft, MailCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput, FieldMessage, FormAlert, PasswordInput, SubmitButton } from "./auth-controls";
-import { clerkErrorMessage, safeRedirect } from "./auth-utils";
+import { clerkErrorMessage, safeRedirect, ssoCallbackUrl } from "./auth-utils";
+import { SocialConnections, type SocialConnection } from "./social-connections";
 
 type Step = "password" | "forgot-code" | "new-password" | "mfa";
 type MfaStrategy = "email" | "phone" | "totp" | "backup";
 
-export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
+export function SignInForm({ redirectUrl, ssoContinuation = false }: { redirectUrl: string; ssoContinuation?: boolean }) {
   const { signIn, errors, fetchStatus } = useSignIn();
   const router = useRouter();
+  const resumedSso = useRef(false);
   const [step, setStep] = useState<Step>("password");
+  const [continuingSso, setContinuingSso] = useState(ssoContinuation);
+  const [ssoBusy, setSsoBusy] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [code, setCode] = useState("");
   const [mfaStrategy, setMfaStrategy] = useState<MfaStrategy>("totp");
   const [localError, setLocalError] = useState("");
-  const busy = fetchStatus === "fetching";
+  const busy = fetchStatus === "fetching" || ssoBusy;
   const signUpHref = redirectUrl === "/" ? "/sign-up" : `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
 
-  async function finish() {
+  const finish = useCallback(async () => {
     const { error } = await signIn.finalize({
       navigate: ({ decorateUrl }) => {
         router.replace(safeRedirect(decorateUrl(redirectUrl)));
       },
     });
     if (error) setLocalError(clerkErrorMessage(error));
-  }
+  }, [redirectUrl, router, signIn]);
 
-  async function prepareMfa() {
+  const prepareMfa = useCallback(async () => {
     const strategies = signIn.supportedSecondFactors.map((factor) => factor.strategy);
     if (strategies.includes("email_code")) {
       setMfaStrategy("email");
@@ -52,6 +56,37 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     }
     setCode("");
     setStep("mfa");
+  }, [signIn]);
+
+  useEffect(() => {
+    if (!continuingSso || resumedSso.current) return;
+    resumedSso.current = true;
+
+    queueMicrotask(() => {
+      if (signIn.status === "complete") {
+        void finish();
+      } else if (signIn.status === "needs_second_factor" || signIn.status === "needs_client_trust") {
+        void prepareMfa();
+      } else if (signIn.status === "needs_new_password") {
+        setStep("new-password");
+      } else {
+        setLocalError("GitHub sign-in could not be resumed. Return to sign in and try again.");
+      }
+    });
+  }, [continuingSso, finish, prepareMfa, signIn.status]);
+
+  async function handleSocial(connection: SocialConnection) {
+    setLocalError("");
+    setSsoBusy(true);
+    const { error } = await signIn.sso({
+      strategy: connection.strategy,
+      redirectUrl: safeRedirect(redirectUrl),
+      redirectCallbackUrl: ssoCallbackUrl("sign-in", redirectUrl),
+    });
+    if (error) {
+      setLocalError(clerkErrorMessage(error, `We couldn't connect to ${connection.name}.`));
+      setSsoBusy(false);
+    }
   }
 
   async function handlePassword(event: FormEvent<HTMLFormElement>) {
@@ -112,6 +147,7 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
     setLocalError("");
     setCode("");
     await signIn.reset();
+    setContinuingSso(false);
     setStep("password");
   }
 
@@ -157,6 +193,7 @@ export function SignInForm({ redirectUrl }: { redirectUrl: string }) {
 
   return (
     <>
+      {!continuingSso && <SocialConnections busy={busy} onConnect={handleSocial} />}
       <FormAlert>{localError || globalError}</FormAlert>
       <form onSubmit={handlePassword} noValidate>
         <div>

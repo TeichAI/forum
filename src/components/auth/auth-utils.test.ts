@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clerkErrorMessage, safeRedirect } from "./auth-utils";
+import { authFormUrl, clerkErrorMessage, safeRedirect, ssoCallbackUrl } from "./auth-utils";
 
 describe("safeRedirect", () => {
   it.each(["/", "/settings", "/t/welcome?reply=1#latest", "/search?q=pond%20life"])("keeps the local path %s", (path) => {
@@ -39,5 +39,18 @@ describe("clerkErrorMessage", () => {
 
   it.each([null, undefined, "failure", 42, {}, { message: 42 }, { longMessage: false }])("uses the fallback for %j", (error) => {
     expect(clerkErrorMessage(error, "Fallback")).toBe("Fallback");
+  });
+});
+
+describe("auth SSO URLs", () => {
+  it("builds form continuation URLs without an unnecessary root redirect", () => {
+    expect(authFormUrl("sign-in", "/", true)).toBe("/sign-in?sso_continuation=1");
+    expect(authFormUrl("sign-up", "/settings?tab=profile", true)).toBe("/sign-up?redirect_url=%2Fsettings%3Ftab%3Dprofile&sso_continuation=1");
+  });
+
+  it("sanitizes form and callback destinations", () => {
+    expect(authFormUrl("sign-in", "//evil.example")).toBe("/sign-in");
+    expect(ssoCallbackUrl("sign-up", "//evil.example")).toBe("/sso-callback?origin=sign-up&redirect_url=%2F");
+    expect(ssoCallbackUrl("sign-in", "/messages?thread=1")).toBe("/sso-callback?origin=sign-in&redirect_url=%2Fmessages%3Fthread%3D1");
   });
 });

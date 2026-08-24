@@ -15,8 +15,8 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/components/auth/auth-shell", () => ({
   AuthShell: ({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children: React.ReactNode }) => <main><span>{eyebrow}</span><h1>{title}</h1><p>{description}</p>{children}</main>,
 }));
-vi.mock("@/components/auth/sign-in-form", () => ({ SignInForm: ({ redirectUrl }: { redirectUrl: string }) => <div data-testid="signin" data-redirect={redirectUrl} /> }));
-vi.mock("@/components/auth/sign-up-form", () => ({ SignUpForm: ({ redirectUrl }: { redirectUrl: string }) => <div data-testid="signup" data-redirect={redirectUrl} /> }));
+vi.mock("@/components/auth/sign-in-form", () => ({ SignInForm: ({ redirectUrl, ssoContinuation }: { redirectUrl: string; ssoContinuation?: boolean }) => <div data-testid="signin" data-redirect={redirectUrl} data-sso={String(Boolean(ssoContinuation))} /> }));
+vi.mock("@/components/auth/sign-up-form", () => ({ SignUpForm: ({ redirectUrl, ssoContinuation }: { redirectUrl: string; ssoContinuation?: boolean }) => <div data-testid="signup" data-redirect={redirectUrl} data-sso={String(Boolean(ssoContinuation))} /> }));
 
 beforeEach(() => {
   mocks.auth.mockReset();
@@ -47,6 +47,16 @@ describe("authentication route pages", () => {
     expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument();
     expect(screen.getByText("Join the community")).toBeInTheDocument();
     expect(screen.getByTestId("signup")).toHaveAttribute("data-redirect", "/");
+  });
+
+  it("passes only the explicit SSO continuation marker to custom forms", async () => {
+    mocks.auth.mockResolvedValue({ userId: null });
+    const first = render(await SignInPage({ searchParams: Promise.resolve({ sso_continuation: "1" }) }));
+    expect(screen.getByTestId("signin")).toHaveAttribute("data-sso", "true");
+    first.unmount();
+
+    render(await SignUpPage({ searchParams: Promise.resolve({ sso_continuation: ["1"] }) }));
+    expect(screen.getByTestId("signup")).toHaveAttribute("data-sso", "false");
   });
 
   it.each([

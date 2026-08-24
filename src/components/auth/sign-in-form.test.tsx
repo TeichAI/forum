@@ -11,9 +11,9 @@ const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("@clerk/nextjs", () => ({ useSignIn: () => state.hook }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-function renderForm(hook = createSignInHook(), redirectUrl = "/") {
+function renderForm(hook = createSignInHook(), redirectUrl = "/", ssoContinuation = false) {
   state.hook = hook;
-  return { hook, ...render(<SignInForm redirectUrl={redirectUrl} />) };
+  return { hook, ...render(<SignInForm redirectUrl={redirectUrl} ssoContinuation={ssoContinuation} />) };
 }
 
 async function enterCredentials(user: ReturnType<typeof userEvent.setup>) {
@@ -110,6 +110,55 @@ describe("SignInForm password flow", () => {
     renderForm(createSignInHook({ fetchStatus: "fetching" }));
     expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Create an account" })).toHaveAttribute("href", "/sign-up");
+  });
+});
+
+describe("SignInForm GitHub SSO", () => {
+  it("starts GitHub SSO with sanitized destinations and accessible social UI", async () => {
+    const user = userEvent.setup();
+    const hook = createSignInHook();
+    const { container } = renderForm(hook, "/messages?thread=1");
+
+    await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
+
+    expect(hook.signIn.sso).toHaveBeenCalledWith({
+      strategy: "oauth_github",
+      redirectUrl: "/messages?thread=1",
+      redirectCallbackUrl: "/sso-callback?origin=sign-in&redirect_url=%2Fmessages%3Fthread%3D1",
+    });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("surfaces SSO errors and disables all actions while Clerk is fetching", async () => {
+    const user = userEvent.setup();
+    const hook = createSignInHook();
+    hook.signIn.sso.mockResolvedValueOnce({ error: { longMessage: "GitHub is unavailable." } });
+    const rendered = renderForm(hook);
+    await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("GitHub is unavailable.");
+
+    hook.fetchStatus = "fetching";
+    state.hook = hook;
+    rendered.rerender(<SignInForm redirectUrl="/" />);
+    expect(screen.getByRole("button", { name: "Connecting to GitHub…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
+  });
+
+  it("resumes MFA and new-password states without showing social connections", async () => {
+    const mfa = createSignInHook({ signIn: { status: "needs_second_factor", supportedSecondFactors: [{ strategy: "totp" }] } });
+    const first = renderForm(mfa, "/settings", true);
+    expect(await screen.findByRole("heading", { name: "One more step" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+    first.unmount();
+
+    renderForm(createSignInHook({ signIn: { status: "needs_new_password" } }), "/settings", true);
+    expect(await screen.findByRole("heading", { name: "Choose a new password" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a recoverable error for an unsupported callback state", async () => {
+    renderForm(createSignInHook({ signIn: { status: "needs_protect_check" } }), "/", true);
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be resumed");
   });
 });
 

@@ -7,13 +7,13 @@ import { safeRedirect } from "@/components/auth/auth-utils";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ redirect_url?: string | string[] }> }) {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ redirect_url?: string | string[]; sso_continuation?: string | string[] }> }) {
   const [{ userId }, params] = await Promise.all([auth(), searchParams]);
   if (userId) redirect(safeRedirect(params.redirect_url));
 
   return (
     <AuthShell eyebrow="Welcome back" title="Sign in to Teich" description="Pick up where you left off and rejoin the conversation.">
-      <SignInForm redirectUrl={safeRedirect(params.redirect_url)} />
+      <SignInForm redirectUrl={safeRedirect(params.redirect_url)} ssoContinuation={params.sso_continuation === "1"} />
     </AuthShell>
   );
 }

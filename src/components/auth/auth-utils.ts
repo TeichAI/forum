@@ -31,3 +31,22 @@ export function safeRedirect(value?: string | string[]) {
     return "/";
   }
 }
+
+export type AuthFormOrigin = "sign-in" | "sign-up";
+
+export function authFormUrl(origin: AuthFormOrigin, redirectUrl: string, continuation = false) {
+  const params = new URLSearchParams();
+  const destination = safeRedirect(redirectUrl);
+  if (destination !== "/") params.set("redirect_url", destination);
+  if (continuation) params.set("sso_continuation", "1");
+  const query = params.toString();
+  return `/${origin}${query ? `?${query}` : ""}`;
+}
+
+export function ssoCallbackUrl(origin: AuthFormOrigin, redirectUrl: string) {
+  const params = new URLSearchParams({
+    origin,
+    redirect_url: safeRedirect(redirectUrl),
+  });
+  return `/sso-callback?${params.toString()}`;
+}

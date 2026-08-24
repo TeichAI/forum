@@ -11,9 +11,9 @@ const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("@clerk/nextjs", () => ({ useSignUp: () => state.hook }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-function renderForm(hook = createSignUpHook(), redirectUrl = "/") {
+function renderForm(hook = createSignUpHook(), redirectUrl = "/", ssoContinuation = false) {
   state.hook = hook;
-  return { hook, ...render(<SignUpForm redirectUrl={redirectUrl} />) };
+  return { hook, ...render(<SignUpForm redirectUrl={redirectUrl} ssoContinuation={ssoContinuation} />) };
 }
 
 async function enterAccount(user: ReturnType<typeof userEvent.setup>, options: { first?: string; last?: string; confirm?: string } = {}) {
@@ -165,6 +165,89 @@ describe("SignUpForm account details", () => {
     renderForm(createSignUpHook({ fetchStatus: "fetching" }));
     expect(screen.getByRole("button", { name: "Creating account…" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
+  });
+});
+
+describe("SignUpForm GitHub SSO", () => {
+  it("starts GitHub SSO with the callback context and reports provider errors", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook();
+    hook.signUp.sso.mockResolvedValueOnce({ error: { message: "GitHub connection failed." } });
+    const { container } = renderForm(hook, "/settings");
+
+    await user.click(screen.getByRole("button", { name: "Continue with GitHub" }));
+
+    expect(hook.signUp.sso).toHaveBeenCalledWith({
+      strategy: "oauth_github",
+      redirectUrl: "/settings",
+      redirectCallbackUrl: "/sso-callback?origin=sign-up&redirect_url=%2Fsettings",
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("GitHub connection failed.");
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("collects only missing supported OAuth fields and never asks for a password", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook({
+      signUp: {
+        missingFields: ["first_name", "legal_accepted"],
+        unverifiedFields: [],
+        emailAddress: "ada@example.com",
+      },
+    });
+    hook.signUp.update.mockImplementationOnce(async () => {
+      hook.signUp.status = "complete";
+      return { error: null };
+    });
+    renderForm(hook, "/settings", true);
+
+    expect(screen.getByLabelText("First name")).toBeRequired();
+    expect(screen.queryByLabelText("Last name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Email address")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("First name"), "Ada");
+    await user.click(screen.getByRole("checkbox", { name: /community guidelines/i }));
+    await user.click(screen.getByRole("button", { name: "Complete account" }));
+    expect(hook.signUp.update).toHaveBeenCalledWith({ firstName: "Ada", legalAccepted: true });
+    expect(hook.signUp.finalize).toHaveBeenCalledOnce();
+  });
+
+  it("collects and verifies a missing OAuth email without resetting the OAuth attempt", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook({ signUp: { missingFields: ["email_address"], unverifiedFields: [] } });
+    hook.signUp.update.mockImplementationOnce(async () => {
+      hook.signUp.unverifiedFields = ["email_address"];
+      return { error: null };
+    });
+    renderForm(hook, "/", true);
+
+    await user.type(screen.getByLabelText("Email address"), "oauth@example.com");
+    await user.click(screen.getByRole("button", { name: "Complete account" }));
+    expect(hook.signUp.update).toHaveBeenCalledWith({ emailAddress: "oauth@example.com" });
+    expect(hook.signUp.verifications.sendEmailCode).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { name: "Check your inbox" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to account details" }));
+    expect(hook.signUp.reset).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("surfaces update and unsupported-requirement failures", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook({ signUp: { missingFields: ["last_name"], unverifiedFields: [] } });
+    hook.signUp.update.mockResolvedValueOnce({ error: { message: "Last name rejected." } });
+    const first = renderForm(hook, "/", true);
+    await user.type(screen.getByLabelText("Last name"), "Pond");
+    await user.click(screen.getByRole("button", { name: "Complete account" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Last name rejected.");
+    first.unmount();
+
+    renderForm(createSignUpHook({ signUp: { missingFields: ["phone_number"], unverifiedFields: [] } }), "/", true);
+    expect(await screen.findByRole("alert")).toHaveTextContent("does not support");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
   });
 });
 

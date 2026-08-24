@@ -33,9 +33,18 @@ test.afterAll(async () => {
   await cleanupIdentity(identity);
 });
 
+test("GitHub connection is visible on the initial custom auth forms", async ({ page }) => {
+  await page.goto("/sign-up?redirect_url=%2Fsettings");
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+
+  await page.goto("/sign-in?redirect_url=%2Fsettings");
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+});
+
 test("custom signup validates locally, verifies email, and reaches protected settings", async ({ page }) => {
   await page.goto("/sign-up?redirect_url=%2Fsettings");
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
   await expect(page.locator("#clerk-captcha")).toBeAttached();
 
   const firstName = page.getByLabel("First name");
@@ -53,6 +62,7 @@ test("custom signup validates locally, verifies email, and reaches protected set
   if (await legal.isVisible()) await legal.check();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your inbox" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toHaveCount(0);
   await page.getByLabel("Verification code").fill("424242");
   await page.getByRole("button", { name: "Verify and join" }).click();
   await expect(page).toHaveURL(/\/settings(?:\?|$)/);
@@ -71,6 +81,7 @@ test("custom signup validates locally, verifies email, and reaches protected set
 
 test("password rejection and success preserve the requested redirect", async ({ page }) => {
   await page.goto("/sign-in?redirect_url=%2Fsettings");
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
   await page.getByLabel("Email address").fill(identity.email);
   await page.getByLabel("Password", { exact: true }).fill("definitely-wrong");
   await page.getByRole("button", { name: "Sign in" }).click();

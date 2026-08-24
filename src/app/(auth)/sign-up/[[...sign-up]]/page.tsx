@@ -7,13 +7,13 @@ import { safeRedirect } from "@/components/auth/auth-utils";
 
 export const metadata: Metadata = { title: "Join" };
 
-export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ redirect_url?: string | string[] }> }) {
+export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ redirect_url?: string | string[]; sso_continuation?: string | string[] }> }) {
   const [{ userId }, params] = await Promise.all([auth(), searchParams]);
   if (userId) redirect(safeRedirect(params.redirect_url));
 
   return (
     <AuthShell eyebrow="Join the community" title="Create your account" description="A home for curious builders, thoughtful questions, and shared progress.">
-      <SignUpForm redirectUrl={safeRedirect(params.redirect_url)} />
+      <SignUpForm redirectUrl={safeRedirect(params.redirect_url)} ssoContinuation={params.sso_continuation === "1"} />
     </AuthShell>
   );
 }
