@@ -40,9 +40,11 @@ test("a member updates their profile and publishes a tagged discussion", async (
   await expect(page).toHaveURL(new RegExp(`/members/${featureIds.member}$`));
   await expect(page.getByRole("heading", { name: "Updated Pond Member" })).toBeVisible();
 
-  await page.goto("/new");
+  await page.goto("/c/general");
+  await page.getByRole("main").getByRole("link", { name: "New thread" }).click();
+  await expect(page).toHaveURL(`/new?categoryId=${featureIds.category}`);
+  await expect(page.getByLabel("Space")).toHaveValue(featureIds.category);
   await page.getByLabel("Title").fill("How should we test community discussions?");
-  await page.getByLabel("Space").selectOption(featureIds.category);
   await page.getByLabel(/Tags/).fill("Testing, next js, testing");
   await page.locator('textarea[name="body"]').fill("A detailed browser-tested post for @pond_other.");
   await page.getByRole("button", { name: "Publish discussion" }).click();

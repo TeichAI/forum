@@ -46,6 +46,7 @@ describe("category, tag, and search pages", () => {
     mocks.listThreads.mockResolvedValue([thread]);
     const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New thread" })).toHaveAttribute("href", "/new?categoryId=category");
     expect(screen.getByText("A discussion")).toBeInTheDocument();
     mocks.listThreads.mockResolvedValue([]);
     rerender(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
@@ -84,11 +85,22 @@ describe("category, tag, and search pages", () => {
 describe("protected utility pages", () => {
   it("renders the new discussion form with ordered categories accessibly", async () => {
     mocks.categories.mockResolvedValue([category]);
-    const { container } = render(await NewThreadPage());
+    const { container } = render(await NewThreadPage({ searchParams: Promise.resolve({ categoryId: "category" }) }));
     expect(screen.getByRole("heading", { name: "Start a discussion" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "General" })).toHaveValue("category");
+    expect(screen.getByLabelText("Space")).toHaveValue("category");
     expect(mocks.categories).toHaveBeenCalledWith({ orderBy: { position: "asc" } });
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it.each([
+    ["a direct visit", {}],
+    ["an unknown category", { categoryId: "missing" }],
+    ["repeated category parameters", { categoryId: ["category", "other"] }],
+  ])("leaves the space unselected for %s", async (_scenario, searchParams) => {
+    mocks.categories.mockResolvedValue([category]);
+    render(await NewThreadPage({ searchParams: Promise.resolve(searchParams) }));
+    expect(screen.getByLabelText("Space")).toHaveValue("");
   });
 
   it("renders populated and empty bookmarks", async () => {
