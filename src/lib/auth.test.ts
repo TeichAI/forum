@@ -25,7 +25,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { getViewer, requireModerator, requireUser, syncCurrentUser } from "./auth";
+import { getViewer, requireAdmin, requireModerator, requireUser, syncCurrentUser } from "./auth";
 
 describe("syncCurrentUser", () => {
   beforeEach(() => {
@@ -193,5 +193,16 @@ describe("viewer authorization", () => {
     e2eUserMock.mockResolvedValue("local");
     findUniqueMock.mockResolvedValue({ id: "local", status: "ACTIVE", suspendedUntil: null, role: "MEMBER" });
     await expect(requireModerator()).rejects.toThrow("redirect:/");
+  });
+
+  it("allows only administrators into admin operations", async () => {
+    e2eModeMock.mockReturnValue(true);
+    e2eUserMock.mockResolvedValue("local");
+    findUniqueMock
+      .mockResolvedValueOnce({ id: "local", status: "ACTIVE", suspendedUntil: null, role: "ADMIN" })
+      .mockResolvedValueOnce({ id: "local", status: "ACTIVE", suspendedUntil: null, role: "MODERATOR" });
+
+    await expect(requireAdmin()).resolves.toEqual(expect.objectContaining({ role: "ADMIN" }));
+    await expect(requireAdmin()).rejects.toThrow("redirect:/");
   });
 });

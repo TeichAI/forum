@@ -17,9 +17,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const accessMode = getClerkAccessMode();
   const viewer = await getViewer();
-  const categories = viewer
-    ? await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } })
-    : [];
+  const categories = await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } });
   const headerViewer = viewer ? {
     id: viewer.id,
     displayName: viewer.displayName,

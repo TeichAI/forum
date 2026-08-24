@@ -80,3 +80,9 @@ export async function requireModerator() {
   if (user.role !== "MODERATOR" && user.role !== "ADMIN") redirect("/");
   return user;
 }
+
+export async function requireAdmin() {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") redirect("/");
+  return user;
+}

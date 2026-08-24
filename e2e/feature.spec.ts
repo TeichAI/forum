@@ -119,4 +119,15 @@ test("an administrator reviews, hides, resolves, and locks reported content", as
   await expect(page.getByRole("heading", { name: "How should we test community discussions?" })).toBeVisible();
   await page.getByRole("button", { name: "Lock" }).click();
   await expect(page.getByText("This discussion is locked.")).toBeVisible();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add space" }).click();
+  await expect(page.getByRole("dialog", { name: "Create a space" })).toBeVisible();
+  await page.getByLabel("Name").fill("Product Ideas");
+  await page.getByLabel("Description").fill("Discuss and refine future product ideas.");
+  await page.getByLabel("Color").fill("#336699");
+  await page.getByRole("button", { name: "Create space", exact: true }).click();
+  await expect(page).toHaveURL(/\/c\/product-ideas$/);
+  await expect(page.getByRole("heading", { name: "Product Ideas" })).toBeVisible();
+  await expect(page.getByText("No discussions here yet.")).toBeVisible();
 });

@@ -48,4 +48,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npm run db:deploy && npm run db:seed && exec npm run start"]
+CMD ["sh", "-c", "npm run db:deploy && exec npm run start"]

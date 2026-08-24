@@ -15,6 +15,7 @@ type CategoryOption = {
 
 type NewThreadDialogContextValue = {
   openNewThread: (categoryId?: string) => void;
+  hasSpaces: boolean;
 };
 
 export const NewThreadDialogContext = createContext<NewThreadDialogContextValue | null>(null);
@@ -69,7 +70,7 @@ export function NewThreadDialogProvider({
   }, [closeDialog, pathname]);
 
   return (
-    <NewThreadDialogContext.Provider value={{ openNewThread }}>
+    <NewThreadDialogContext.Provider value={{ openNewThread, hasSpaces: categories.length > 0 }}>
       {children}
       {isAuthenticated ? (
         <dialog

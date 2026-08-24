@@ -39,11 +39,11 @@ afterEach(() => {
   delete prototype.close;
 });
 
-function Composer({ isAuthenticated = true }: { isAuthenticated?: boolean }) {
+function Composer({ isAuthenticated = true, categories = [{ id: "general", name: "General" }, { id: "help", name: "Help" }] }: { isAuthenticated?: boolean; categories?: { id: string; name: string }[] }) {
   return (
     <NewThreadDialogProvider
       isAuthenticated={isAuthenticated}
-      categories={[{ id: "general", name: "General" }, { id: "help", name: "Help" }]}
+      categories={categories}
       uploadsEnabled={false}
     >
       <NewThreadTrigger className="header-trigger">Header new thread</NewThreadTrigger>
@@ -112,5 +112,11 @@ describe("NewThreadDialogProvider", () => {
 
     expect(navigation.push).toHaveBeenCalledWith("/sign-in");
     expect(screen.queryByRole("dialog", { hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("hides every discussion trigger while no spaces exist", () => {
+    render(<Composer categories={[]} />);
+    expect(screen.queryByRole("button", { name: "Header new thread" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Category new thread" })).not.toBeInTheDocument();
   });
 });

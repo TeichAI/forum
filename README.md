@@ -6,8 +6,8 @@ A community forum for Teich, built with Next.js, Clerk, and PostgreSQL/Prisma. U
 
 1. Copy `.env.example` to `.env.local` and fill in the Clerk and PostgreSQL credentials. `CLERK_WEBHOOK_SECRET` and `UPLOADTHING_TOKEN` can remain blank for normal local development.
 2. Install dependencies with `npm install`.
-3. Create the schema with `npm run db:push` and seed starter categories with `npm run db:seed`.
-4. Start the app with `npm run dev`.
+3. Create the schema with `npm run db:push`.
+4. Start the app with `npm run dev`, sign in as a configured administrator, and create the first space from the Spaces panel on the home page.
 
 Signed-in users are added to the local database on their first visit, so local development does not require a webhook or a public tunnel. The first matching Clerk ID in `ADMIN_CLERK_USER_IDS` is promoted to administrator when their local user record is created or synchronized.
 
@@ -29,7 +29,7 @@ For Docker Compose, export the mode before building when it is not `public`, for
 2. Run `docker compose up --build`.
 3. Open [http://localhost:3000](http://localhost:3000).
 
-The forum waits for PostgreSQL to be healthy, applies committed Prisma migrations, and seeds the starter categories before it starts. Database data is kept in a named volume across restarts. Run `docker compose down` to stop the stack, or `docker compose down --volumes` to also reset its database.
+The forum waits for PostgreSQL to be healthy and applies committed Prisma migrations before it starts. A fresh database has no spaces; sign in as a configured administrator and create the first one from the Spaces panel on the home page. Database data is kept in a named volume across restarts. Run `docker compose down` to stop the stack, or `docker compose down --volumes` to also reset its database.
 
 Set `FORUM_PORT` or `POSTGRES_PORT` in your shell to change the exposed ports. To use a different environment file, set `FORUM_ENV_FILE` to its path before running Compose.
 

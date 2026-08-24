@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listThreads: vi.fn(),
   findCategories: vi.fn(),
   countUsers: vi.fn(),
+  categoryList: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.getViewer }));
@@ -18,7 +19,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 vi.mock("@/components/forum/category-list", () => ({
-  CategoryList: () => <div data-testid="category-list" />,
+  CategoryList: (props: unknown) => { mocks.categoryList(props); return <div data-testid="category-list" />; },
 }));
 vi.mock("@/components/forum/thread-card", () => ({
   ThreadCard: () => <article data-testid="thread-card" />,
@@ -30,8 +31,9 @@ vi.mock("@/components/new-thread-trigger", () => ({
 beforeEach(() => {
   mocks.getViewer.mockReset();
   mocks.listThreads.mockReset().mockResolvedValue([]);
-  mocks.findCategories.mockReset().mockResolvedValue([]);
+  mocks.findCategories.mockReset().mockResolvedValue([{ id: "category", name: "General" }]);
   mocks.countUsers.mockReset().mockResolvedValue(1_234);
+  mocks.categoryList.mockReset();
 });
 
 describe("home page", () => {
@@ -48,7 +50,7 @@ describe("home page", () => {
   });
 
   it("shows a compact personalized welcome to signed-in members", async () => {
-    mocks.getViewer.mockResolvedValue({ displayName: "Owen Example" });
+    mocks.getViewer.mockResolvedValue({ displayName: "Owen Example", role: "MEMBER" });
 
     render(await Home({ searchParams: Promise.resolve({ sort: "new" }) }));
 
@@ -58,5 +60,13 @@ describe("home page", () => {
     expect(screen.queryByRole("button", { name: /Start a discussion/ })).not.toBeInTheDocument();
     expect(mocks.countUsers).not.toHaveBeenCalled();
     expect(mocks.listThreads).toHaveBeenCalledWith({ sort: "new" });
+    expect(mocks.categoryList).toHaveBeenCalledWith(expect.objectContaining({ canCreateSpace: false }));
+  });
+
+  it("allows only administrators to create spaces from the sidebar", async () => {
+    mocks.getViewer.mockResolvedValue({ displayName: "Pond Admin", role: "ADMIN" });
+    render(await Home({ searchParams: Promise.resolve({}) }));
+    expect(mocks.categoryList).toHaveBeenCalledWith(expect.objectContaining({ canCreateSpace: true }));
+    expect(screen.queryByLabelText("Administrator")).not.toBeInTheDocument();
   });
 });

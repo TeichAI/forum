@@ -10,6 +10,7 @@ type NewThreadTriggerProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onCl
 export function NewThreadTrigger({ categoryId, children, ...props }: NewThreadTriggerProps) {
   const context = useContext(NewThreadDialogContext);
   if (!context) throw new Error("NewThreadTrigger must be rendered inside NewThreadDialogProvider");
+  if (!context.hasSpaces) return null;
 
   return (
     <button type="button" {...props} onClick={() => context.openNewThread(categoryId)}>
