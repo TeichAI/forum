@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useClerk, useUser } from "@clerk/nextjs";
 import { LogOut, Settings } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { UserRoleBadge } from "@/components/ui/user-role-badge";
 
 type AccountMenuProps = {
   id: string;
   displayName: string;
   username: string;
   imageUrl: string | null;
+  role: "MEMBER" | "MODERATOR" | "ADMIN";
 };
 
 function subscribeToHydration() {
@@ -25,7 +27,7 @@ function getServerSnapshot() {
   return false;
 }
 
-export function AccountMenu({ id, displayName, username, imageUrl }: AccountMenuProps) {
+export function AccountMenu({ id, displayName, username, imageUrl, role }: AccountMenuProps) {
   const { signOut } = useClerk();
   const { user } = useUser();
   const [open, setOpen] = useState(false);
@@ -107,7 +109,7 @@ export function AccountMenu({ id, displayName, username, imageUrl }: AccountMenu
           aria-label="Account menu"
         >
           <div className="border-b px-3 py-3" style={{ borderColor: "var(--line)" }}>
-            <div className="truncate text-sm font-extrabold">{displayName}</div>
+            <div className="flex items-center gap-2"><div className="truncate text-sm font-extrabold">{displayName}</div><UserRoleBadge role={role} /></div>
             <div className="truncate text-xs muted">@{username}</div>
           </div>
           <div className="py-1">

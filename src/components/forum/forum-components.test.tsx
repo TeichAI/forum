@@ -18,7 +18,7 @@ const thread = {
   id: "thread", slug: "hello", title: "Pinned hello", body: "A **useful** body", status: "PUBLISHED", isPinned: true,
   isLocked: false, viewCount: 0, authorId: "author", categoryId: "category", createdAt: new Date(), updatedAt: new Date(), editedAt: null,
   bumpedAt: new Date(), deletedAt: null,
-  author: { id: "author", username: "author", displayName: "Author", imageUrl: null }, category,
+  author: { id: "author", username: "author", displayName: "Author", imageUrl: null, role: "ADMIN" }, category,
   tags: [{ threadId: "thread", tagId: "tag", tag: { id: "tag", name: "Testing", slug: "testing", createdAt: new Date() } }],
   _count: { replies: 2, votes: 3, bookmarks: 4 },
 };
@@ -37,6 +37,7 @@ describe("forum display components", () => {
     expect(screen.getByRole("heading", { name: "Pinned hello" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pinned hello/ })).toHaveAttribute("href", "/t/hello");
     expect(screen.getByRole("link", { name: "#Testing" })).toHaveAttribute("href", "/tag/testing");
+    expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 

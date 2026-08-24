@@ -25,6 +25,7 @@ const viewer = {
   displayName: "Owen Example",
   username: "owen",
   imageUrl: "https://img.clerk.com/server-avatar.png",
+  role: "ADMIN" as const,
 };
 
 beforeEach(() => {
@@ -78,6 +79,7 @@ describe("AccountMenu", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("navigation", { name: "Account menu" })).toBeInTheDocument();
     expect(screen.getByText("Owen Example")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
     expect(screen.getByText("@owen")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/settings");
     expect(screen.queryByText("Account & security")).not.toBeInTheDocument();

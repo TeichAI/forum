@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Droplets, Sparkles, Users } from "lucide-react";
 import { CategoryList } from "@/components/forum/category-list";
 import { ThreadCard } from "@/components/forum/thread-card";
+import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listThreads } from "@/lib/queries";
@@ -22,7 +23,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
       {viewer ? (
         <section className="card mb-6 px-6 py-5 sm:px-8 sm:py-6">
           <div className="eyebrow mb-2 flex items-center gap-2"><Droplets size={15} /> The Teich community</div>
-          <h1 className="break-words text-2xl font-black tracking-tight sm:text-3xl">Welcome back, {viewer.displayName}</h1>
+          <h1 className="flex flex-wrap items-center gap-2 break-words text-2xl font-black tracking-tight sm:text-3xl">Welcome back, {viewer.displayName}<UserRoleBadge role={viewer.role} /></h1>
           <p className="mt-1 text-sm leading-6 muted sm:text-base">Catch up on the latest ideas and discussions.</p>
         </section>
       ) : (

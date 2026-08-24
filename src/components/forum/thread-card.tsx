@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { threadListInclude } from "@/lib/queries";
 import { excerpt } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
+import { UserRoleBadge } from "@/components/ui/user-role-badge";
 
 type ThreadCardData = Prisma.ThreadGetPayload<{ include: typeof threadListInclude }>;
 
@@ -16,6 +17,7 @@ export function ThreadCard({ thread }: { thread: ThreadCardData }) {
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs muted">
             <Link href={`/members/${thread.author.id}`} className="font-bold" style={{ color: "var(--foreground)" }}>{thread.author.displayName}</Link>
+            <UserRoleBadge role={thread.author.role} />
             <span>in</span>
             <Link href={`/c/${thread.category.slug}`} className="font-bold" style={{ color: thread.category.color }}>{thread.category.name}</Link>
             <span>·</span><time>{formatDistanceToNow(thread.createdAt, { addSuffix: true })}</time>

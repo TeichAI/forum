@@ -31,7 +31,7 @@ describe("Header", () => {
     if (role === "MEMBER") expect(screen.queryByRole("link", { name: "Moderation" })).not.toBeInTheDocument();
     else expect(screen.getByRole("link", { name: "Moderation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Custom account" })).toBeInTheDocument();
-    expect(mocks.accountMenu).toHaveBeenCalledWith({ id: "user", displayName: "Owen Example", username: "owen", imageUrl: "https://img.clerk.com/avatar.png" });
+    expect(mocks.accountMenu).toHaveBeenCalledWith({ id: "user", displayName: "Owen Example", username: "owen", imageUrl: "https://img.clerk.com/avatar.png", role });
   });
 
   it("uses a deterministic account marker in E2E mode", async () => {

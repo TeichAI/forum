@@ -8,6 +8,7 @@ vi.mock("next/image", () => ({ default: (props: React.ImgHTMLAttributes<HTMLImag
 
 import { Avatar } from "./avatar";
 import { SubmitButton } from "./submit-button";
+import { UserRoleBadge } from "./user-role-badge";
 
 beforeEach(() => { pending.value = false; });
 
@@ -17,6 +18,19 @@ describe("basic UI", () => {
     expect(container.querySelector("img")).toHaveAttribute("src", "https://example.com/avatar.png");
     rerender(<Avatar name="owen" />);
     expect(screen.getByText("O")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("gives administrators a distinct accessible icon while preserving moderator labels", () => {
+    const { rerender } = render(<UserRoleBadge role="ADMIN" />);
+    expect(screen.getByRole("img", { name: "Administrator" })).toHaveAttribute("title", "Administrator");
+    expect(screen.queryByText("admin")).not.toBeInTheDocument();
+
+    rerender(<UserRoleBadge role="MODERATOR" />);
+    expect(screen.getByText("moderator")).toBeInTheDocument();
+
+    rerender(<UserRoleBadge role="MEMBER" />);
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByText("moderator")).not.toBeInTheDocument();
   });
 
   it("switches submit content and disabled state while pending", () => {

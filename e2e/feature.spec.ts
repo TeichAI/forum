@@ -94,6 +94,8 @@ test("the recipient sees notifications and can report content for staff review",
   await page.goto(createdThreadUrl);
   const report = page.locator("details").filter({ has: page.locator('input[name="targetType"][value="THREAD"]') });
   await report.locator("summary").click();
+  await expect(report.getByLabel("Reason")).toBeInViewport({ ratio: 1 });
+  await expect(report.getByLabel("Details")).toBeInViewport({ ratio: 0.75 });
   await report.getByLabel("Reason").selectOption({ label: "Off topic" });
   await report.getByLabel("Details").fill("Please review this browser-generated report.");
   await report.getByRole("button", { name: "Send report" }).click();

@@ -3,7 +3,7 @@ import { Prisma, type User } from "@prisma/client";
 import { db } from "@/lib/db";
 
 export const threadListInclude = {
-  author: { select: { id: true, username: true, displayName: true, imageUrl: true } },
+  author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
   category: true,
   tags: { include: { tag: true } },
   _count: { select: { replies: true, votes: true, bookmarks: true } },
