@@ -1,6 +1,13 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
+import { isE2ETestMode } from "@/lib/e2e-auth";
 
-export default clerkMiddleware();
+const clerkProxy = clerkMiddleware();
+
+export default function proxy(request: NextRequest, event: NextFetchEvent) {
+  if (isE2ETestMode()) return NextResponse.next();
+  return clerkProxy(request, event);
+}
 
 export const config = {
   matcher: [

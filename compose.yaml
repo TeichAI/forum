@@ -34,6 +34,23 @@ services:
     init: true
     restart: unless-stopped
 
+  database-test:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: teich_forum_test
+      POSTGRES_USER: teich_test
+      POSTGRES_PASSWORD: teich_test
+    ports:
+      - "${TEST_POSTGRES_PORT:-5433}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teich_test -d teich_forum_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
 volumes:
   postgres_data:
 

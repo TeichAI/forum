@@ -1,19 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const e2ePort = process.env.E2E_PORT ?? "3100";
+const e2ePort = process.env.E2E_AUTH_PORT ?? "3200";
 const e2eBaseUrl = `http://localhost:${e2ePort}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "feature.spec.ts",
-  globalSetup: "./e2e/feature-global-setup.ts",
+  testMatch: "auth.spec.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  outputDir: "test-results/features",
-  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report/features" }]],
+  globalSetup: "./e2e/global-setup.ts",
+  outputDir: "test-results/auth",
+  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report/auth" }]],
   use: {
     baseURL: e2eBaseUrl,
     trace: "retain-on-failure",
@@ -22,7 +22,7 @@ export default defineConfig({
   },
   webServer: {
     command: `npm run dev -- --port ${e2ePort}`,
-    url: e2eBaseUrl,
+    url: `${e2eBaseUrl}/sign-in`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

@@ -1,9 +1,11 @@
 import { Webhook } from "svix";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { headersMock, updateManyMock } = vi.hoisted(() => ({
+const { headersMock, updateManyMock, findUniqueMock, upsertMock } = vi.hoisted(() => ({
   headersMock: vi.fn(),
   updateManyMock: vi.fn(),
+  findUniqueMock: vi.fn(),
+  upsertMock: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ headers: headersMock }));
@@ -11,6 +13,8 @@ vi.mock("@/lib/db", () => ({
   db: {
     user: {
       updateMany: updateManyMock,
+      findUnique: findUniqueMock,
+      upsert: upsertMock,
     },
   },
 }));
@@ -19,6 +23,17 @@ describe("Clerk webhook route", () => {
   beforeEach(() => {
     headersMock.mockReset();
     updateManyMock.mockReset();
+    findUniqueMock.mockReset();
+    upsertMock.mockReset();
+  });
+
+  it("rejects requests with incomplete signature headers", async () => {
+    vi.stubEnv("CLERK_WEBHOOK_SECRET", "whsec_dGVzdC1zZWNyZXQ=");
+    headersMock.mockResolvedValue(new Headers({ "svix-id": "only-one" }));
+    const { POST } = await import("./route");
+    const response = await POST(new Request("http://localhost/api/webhooks/clerk", { method: "POST" }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "Missing signature" });
   });
 
   afterEach(() => {
@@ -82,5 +97,37 @@ describe("Clerk webhook route", () => {
       where: { clerkId: "user_test" },
       data: { status: "DELETED", deletedAt: expect.any(Date), email: null },
     });
+  });
+
+  it.each([
+    ["user.created", null, "member_user_new", "MEMBER"],
+    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", undefined],
+  ])("processes a signed %s profile event", async (type, current, expectedUsername, expectedRole) => {
+    const secret = "whsec_dGVzdC1zZWNyZXQ=";
+    const messageId = `msg_${type}`;
+    const timestamp = new Date();
+    const payload = JSON.stringify({
+      type,
+      data: {
+        id: "user_new", username: "Duplicate", first_name: "New", last_name: "Member",
+        image_url: "https://example.com/avatar.png", primary_email_address_id: "email_1",
+        email_addresses: [{ id: "email_1", email_address: "new@example.com" }],
+      },
+    });
+    vi.stubEnv("CLERK_WEBHOOK_SECRET", secret);
+    headersMock.mockResolvedValue(new Headers({
+      "svix-id": messageId,
+      "svix-timestamp": String(Math.floor(timestamp.getTime() / 1000)),
+      "svix-signature": new Webhook(secret).sign(messageId, timestamp, payload),
+    }));
+    findUniqueMock.mockResolvedValueOnce(current).mockResolvedValueOnce(current ? current : { clerkId: "other" });
+    upsertMock.mockResolvedValue({});
+    const { POST } = await import("./route");
+    const response = await POST(new Request("http://localhost/api/webhooks/clerk", { method: "POST", body: payload }));
+    expect(response.status).toBe(200);
+    const args = upsertMock.mock.calls[0][0];
+    expect(args.create.username).toBe(expectedUsername);
+    if (expectedRole) expect(args.create.role).toBe(expectedRole);
+    expect(args.update).toEqual(expect.objectContaining({ displayName: "New Member", email: "new@example.com" }));
   });
 });

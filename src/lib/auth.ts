@@ -2,6 +2,7 @@ import "server-only";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { getE2ETestUserId, isE2ETestMode } from "@/lib/e2e-auth";
 import { slugify } from "@/lib/utils";
 
 function isBootstrapAdmin(clerkId: string) {
@@ -23,6 +24,10 @@ async function availableUsername(candidate: string, clerkId: string) {
 }
 
 export async function syncCurrentUser() {
+  if (isE2ETestMode()) {
+    const testUserId = await getE2ETestUserId();
+    return testUserId ? db.user.findUnique({ where: { id: testUserId } }) : null;
+  }
   const { userId } = await auth();
   if (!userId) return null;
 
@@ -35,18 +40,26 @@ export async function syncCurrentUser() {
   const username = await availableUsername(preferred, userId);
   const email = clerkUser.emailAddresses.find((item) => item.id === clerkUser.primaryEmailAddressId)?.emailAddress;
 
-  return db.user.upsert({
-    where: { clerkId: userId },
-    update: {},
-    create: {
-      clerkId: userId,
-      username,
-      displayName: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || username,
-      email,
-      imageUrl: clerkUser.imageUrl,
-      role: isBootstrapAdmin(userId) ? "ADMIN" : "MEMBER",
-    },
-  });
+  try {
+    return await db.user.upsert({
+      where: { clerkId: userId },
+      update: {},
+      create: {
+        clerkId: userId,
+        username,
+        displayName: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || username,
+        email,
+        imageUrl: clerkUser.imageUrl,
+        role: isBootstrapAdmin(userId) ? "ADMIN" : "MEMBER",
+      },
+    });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      const raced = await db.user.findUnique({ where: { clerkId: userId } });
+      if (raced) return raced;
+    }
+    throw error;
+  }
 }
 
 export async function getViewer() {

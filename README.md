@@ -30,3 +30,19 @@ When `CLERK_WEBHOOK_SECRET` is blank or absent, the webhook endpoint is disabled
 ## Optional image uploads
 
 Set `UPLOADTHING_TOKEN` to enable the image upload button and `/api/uploadthing`. If the token is absent or blank, the forum remains fully usable, new uploads are rejected, and existing UploadThing-hosted images are hidden without deleting their Markdown or attachment records. Externally hosted Markdown images continue to render.
+
+## Testing
+
+The test suite is split into deterministic layers:
+
+- `npm test` runs the fast Vitest unit, component, route, and App Router page suite.
+- `npm run test:coverage` enforces 90% lines/statements/functions and 85% branches across all production source.
+- `npm run test:critical:coverage` enforces 95% lines/statements/functions and 90% branches across authentication, server actions, queries, the request proxy, and API routes.
+- `npm run test:integration` starts an ephemeral PostgreSQL 17 service on port 5433, applies migrations, and runs the serial Prisma integration suite.
+- `npm run test:e2e:features` runs the isolated Chromium forum journeys on port 3100 with seeded local identities.
+- `npm run test:e2e:auth` runs the separate live-Clerk development-instance suite on port 3200 and requires test Clerk keys in `.env.local`.
+- `npm run test:verify` runs the deterministic local quality gate; `npm run test:verify:external` also runs the live-Clerk suite.
+
+Integration and feature tests refuse to reset a database whose name does not contain `test`. Set `TEST_DATABASE_URL` to use an existing dedicated test database, `TEST_POSTGRES_PORT` to change the disposable Compose service port, or `KEEP_TEST_DATABASE=1` to leave that service running for troubleshooting. Feature sessions are HMAC-signed and are accepted only with explicit E2E mode, a 32-character secret, and a non-production server.
+
+Playwright keeps traces, screenshots, and videos only for failed tests under the ignored `test-results` and `playwright-report` directories. UploadThing behavior is exercised through local contract tests; no live UploadThing credentials are required.
