@@ -11,6 +11,7 @@ import { CodeInput, FormAlert, PasswordInput } from "@/components/auth/auth-cont
 import { clerkErrorMessage } from "@/components/auth/auth-utils";
 import { Avatar } from "@/components/ui/avatar";
 import { ReverificationProvider, useCustomReverification } from "./reverification";
+import { SocialAccountSettings } from "./social-account-settings";
 
 type AccountSecurityProps = {
   displayName: string;
@@ -47,6 +48,7 @@ function AccountSecuritySections(props: AccountSecurityProps) {
         <hr className="divider my-7" />
         <PasswordSettings />
       </section>
+      <SocialAccountSettings />
       <SessionSettings />
       <DeleteAccount username={props.username} />
     </>

@@ -119,6 +119,8 @@ test("custom account center manages identity and displays active sessions", asyn
   await page.getByRole("button", { name: /Account menu for/i }).click();
   await page.getByRole("link", { name: "Account settings" }).click();
   await expect(page.getByRole("heading", { name: "Account settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect GitHub" })).toBeVisible();
 
   const avatar = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
   await page.getByLabel(/Choose photo/).setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: avatar });

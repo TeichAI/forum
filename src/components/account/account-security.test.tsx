@@ -88,6 +88,7 @@ describe("AccountSecurity", () => {
 
     expect(screen.getByRole("heading", { name: "Profile photo" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Login & security" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Connected accounts" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Active sessions" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
     expect(screen.queryByText(/Clerk/i)).not.toBeInTheDocument();
