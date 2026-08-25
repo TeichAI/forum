@@ -116,6 +116,19 @@ test("the recipient sees notifications and can report content for staff review",
   await expect(page.getByText(/upvoted your post/)).toBeVisible();
   await expect(page.getByText(/started following you/)).toBeVisible();
   await expect(page.getByText(/mentioned you/)).toBeVisible();
+  await page.locator('a[href*="#reply-"]').filter({ hasText: "replied to your discussion" }).click();
+  const parentReply = page.locator('article[id^="reply-"]').filter({ hasText: "A thoughtful reply for @pond_member" });
+  await parentReply.getByRole("button", { name: "Reply to Pond Other" }).click();
+  const inlineComposer = page.getByPlaceholder("Reply to Pond Other…").locator("xpath=ancestor::form");
+  await inlineComposer.getByPlaceholder("Reply to Pond Other…").fill("A nested browser reply from the discussion author.");
+  await inlineComposer.getByRole("button", { name: "Post reply" }).click();
+  const nestedReply = page.locator('article[id^="reply-"]').filter({ hasText: "A nested browser reply from the discussion author." });
+  await expect(nestedReply).toBeVisible();
+  await expect(nestedReply.getByRole("link", { name: "Replying to Pond Other" })).toHaveAttribute("href", new RegExp(`^#reply-`));
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/notifications");
   await page.getByRole("button", { name: /Mark all read/ }).click();
   await expect(page.getByRole("button", { name: /Mark all read/ })).toHaveCount(0);
 
@@ -168,6 +181,18 @@ test("the recipient sees notifications and can report content for staff review",
   await report.getByLabel("Reason").selectOption({ label: "Off topic" });
   await report.getByLabel("Details").fill("Please review this browser-generated report.");
   await report.getByRole("button", { name: "Send report" }).click();
+});
+
+test("a direct parent author follows a nested-reply notification anchor", async ({ context, page }) => {
+  await useIdentity(context, featureIds.other);
+  await page.goto("/notifications");
+  const notification = page.locator('a[href*="#reply-"]').filter({ hasText: "replied to your reply" }).first();
+  await expect(notification).toBeVisible();
+  const href = await notification.getAttribute("href");
+  await notification.click();
+  await expect(page).toHaveURL(new RegExp(`${href!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+  const anchorId = href!.split("#")[1];
+  await expect(page.locator(`#${anchorId}`)).toContainText("A nested browser reply from the discussion author.");
 });
 
 test("draft autosave and staff BCC remain private", async ({ context, page }) => {

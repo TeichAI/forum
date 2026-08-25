@@ -17,6 +17,7 @@ vi.mock("@/lib/db", () => ({ db: {
 } }));
 vi.mock("@/components/markdown", () => ({ Markdown: ({ children }: { children: string }) => <div>{children}</div> }));
 vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Editor" /> }));
+vi.mock("@/components/markdown-editor-client", () => ({ MarkdownEditorClient: ({ placeholder }: { placeholder: string }) => <textarea name="body" placeholder={placeholder} /> }));
 vi.mock("@/components/forum/thread-card", () => ({ ThreadCard: ({ thread }: { thread: { title: string } }) => <article>{thread.title}</article> }));
 vi.mock("@/components/forum/report-form", () => ({ ReportForm: ({ targetType }: { targetType: string }) => <button>{`Report ${targetType}`}</button> }));
 vi.mock("@/components/forum/content-menu", () => ({ ContentMenu: ({ type }: { type: string }) => <button>{`Edit ${type}`}</button> }));
@@ -36,7 +37,7 @@ const thread = {
   id: "thread", slug: "topic", title: "A full discussion", body: "Thread body", status: "PUBLISHED", authorId: member.id,
   author: member, category: { id: "category", slug: "general", name: "General", color: "#123456", postingPolicy: "OPEN" }, tags: [{ tag: { id: "tag", slug: "testing", name: "Testing" } }],
   votes: [], bookmarks: [], _count: { votes: 2, replies: 1 }, isLocked: false, createdAt: now, editedAt: null,
-  replies: [{ id: "reply", body: "Reply body", authorId: other.id, author: { ...other, role: "MODERATOR" }, votes: [], _count: { votes: 1 }, createdAt: now, editedAt: now }],
+  replies: [{ id: "reply", body: "Reply body", status: "PUBLISHED", parentReplyId: null, authorId: other.id, author: { ...other, role: "MODERATOR" }, votes: [], _count: { votes: 1 }, createdAt: now, editedAt: now }],
 };
 
 beforeEach(() => {
@@ -73,6 +74,7 @@ describe("discussion page", () => {
     expect(screen.getByText("Edit thread")).toBeInTheDocument();
     expect(screen.getByText("Report THREAD")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Post reply" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reply to Other" })).toBeInTheDocument();
   });
 
   it("shows locked staff controls and allows staff to inspect hidden content", async () => {
@@ -82,6 +84,7 @@ describe("discussion page", () => {
     expect(screen.getByText("This discussion is locked.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unlock" })).toBeInTheDocument();
     expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reply to Other" })).not.toBeInTheDocument();
   });
 
   it("replaces replies with an admin-only notice while keeping thread locks absolute", async () => {
@@ -130,6 +133,29 @@ describe("discussion page", () => {
     await expect(ThreadPage({ params: Promise.resolve({ slug: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
     await expect(ThreadPage({ params: Promise.resolve({ slug: "topic" }) })).rejects.toThrow("NEXT_NOT_FOUND");
   });
+
+  it("renders nested branches, stable anchors, parent labels, and removed-parent placeholders", async () => {
+    mocks.viewer.mockResolvedValue(null);
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      _count: { ...thread._count, replies: 2 },
+      replies: [
+        { ...thread.replies[0], id: "deleted-parent", body: "Secret deleted body", status: "DELETED", author: other },
+        { ...thread.replies[0], id: "nested", body: "Visible descendant", status: "PUBLISHED", parentReplyId: "deleted-parent", author: member, authorId: member.id },
+        { ...thread.replies[0], id: "hidden", body: "Secret hidden body", status: "HIDDEN", parentReplyId: "nested", author: other },
+      ],
+    });
+
+    render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(screen.getByText("Reply deleted")).toBeInTheDocument();
+    expect(screen.getByText("Reply unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Secret deleted body")).not.toBeInTheDocument();
+    expect(screen.queryByText("Secret hidden body")).not.toBeInTheDocument();
+    expect(screen.getByText("Visible descendant")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Replying to Other" })).toHaveAttribute("href", "#reply-deleted-parent");
+    expect(document.querySelector("#reply-nested")).toBeInTheDocument();
+    expect(document.querySelector('[data-depth="2"]')).toHaveAttribute("data-indent-mobile", "2");
+  });
 });
 
 describe("member profile", () => {
@@ -167,12 +193,14 @@ describe("notification and moderation pages", () => {
   it("renders notification destinations, unread state, and mark-all action", async () => {
     mocks.requireUser.mockResolvedValue(member);
     mocks.notifications.mockResolvedValue([
-      { id: "reply", type: "REPLY", conversationId: null, thread: { slug: "topic", title: "Topic" }, replyId: "reply", actor: other, readAt: now, createdAt: now },
+      { id: "reply", type: "REPLY", conversationId: null, thread: { slug: "topic", title: "Topic" }, reply: { parentReplyId: null }, replyId: "reply", actor: other, readAt: now, createdAt: now },
+      { id: "nested-reply", type: "REPLY", conversationId: null, thread: { slug: "topic", title: "Topic" }, reply: { parentReplyId: "parent" }, replyId: "nested", actor: other, readAt: now, createdAt: now },
       { id: "system", type: "MODERATION", thread: null, replyId: null, actor: null, readAt: null, createdAt: now },
     ]);
     render(await NotificationsPage());
     expect(screen.getByRole("button", { name: /Mark all read/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /replied to your discussion/ })).toHaveAttribute("href", "/t/topic#reply-reply");
+    expect(screen.getByRole("link", { name: /replied to your reply/ })).toHaveAttribute("href", "/t/topic#reply-nested");
     expect(screen.getByRole("link", { name: /moderation update/ })).toHaveAttribute("href", "/notifications");
   });
 

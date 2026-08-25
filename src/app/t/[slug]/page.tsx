@@ -5,6 +5,7 @@ import { Bookmark, Lock, MessageCircle, ThumbsUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { createReply, toggleBookmark, toggleReplyVote, toggleThreadLock, toggleThreadVote } from "@/actions/forum";
 import { ContentMenu } from "@/components/forum/content-menu";
+import { NestedReplyComposer, NestedReplyControl, ReplyComposerProvider } from "@/components/forum/nested-reply-composer";
 import { ReportForm } from "@/components/forum/report-form";
 import { Markdown } from "@/components/markdown";
 import { MarkdownEditor } from "@/components/markdown-editor";
@@ -16,7 +17,9 @@ import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canModerate } from "@/lib/queries";
+import { buildReplyTree, flattenReplyTree, replyIndentLevels } from "@/lib/reply-tree";
 import { canComment } from "@/lib/space-posting-permissions";
+import { uploadsEnabled } from "@/lib/upload-capability";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +45,6 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
       bookmarks: viewer ? { where: { userId: viewer.id } } : false,
       _count: { select: { votes: true, replies: { where: { status: "PUBLISHED" } } } },
       replies: {
-        where: { status: "PUBLISHED" },
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
@@ -55,6 +57,15 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
   if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt) && !canModerate(viewer))) notFound();
 
   const returnTo = `/t/${thread.slug}`;
+  const displayReplies = flattenReplyTree(buildReplyTree(thread.replies));
+  const canViewerReply = Boolean(
+    viewer
+    && thread.status === "PUBLISHED"
+    && !thread.category.archivedAt
+    && !thread.isLocked
+    && canComment(viewer.role, thread.category.postingPolicy),
+  );
+  const replyUploadsEnabled = uploadsEnabled();
   const showPolicyReplyNotice = thread.category.postingPolicy === "ADMIN_ONLY"
     && !canComment(viewer?.role, thread.category.postingPolicy);
 
@@ -129,41 +140,71 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
         <h2 className="mb-4 text-xl font-black">
           {thread._count.replies} {thread._count.replies === 1 ? "reply" : "replies"}
         </h2>
-        <div className="space-y-3">
-          {thread.replies.map((reply, index) => (
-            <article id={`reply-${reply.id}`} key={reply.id} className="card p-5 sm:p-6">
-              <div className="flex gap-3">
-                <Link href={`/members/${reply.author.id}`}>
-                  <Avatar src={reply.author.imageUrl} name={reply.author.displayName} />
-                </Link>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Link href={`/members/${reply.author.id}`} className="font-extrabold">{reply.author.displayName}</Link>
-                    <UserRoleBadge role={reply.author.role} />
-                    <span className="muted">
-                      · {formatDistanceToNow(reply.createdAt, { addSuffix: true })}{reply.editedAt ? " · edited" : ""}
-                    </span>
-                    <a href={`#reply-${reply.id}`} className="ml-auto text-xs muted">#{index + 1}</a>
-                  </div>
-                  <div className="mt-4"><Markdown>{reply.body}</Markdown></div>
-                  <div className="mt-5 flex items-center gap-3">
-                    <RateLimitForm action={toggleReplyVote}>
-                      <input type="hidden" name="replyId" value={reply.id} />
-                      <input type="hidden" name="returnTo" value={returnTo} />
-                      <SubmitButton className={`button !px-2.5 !py-1.5 ${reply.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
-                        <ThumbsUp size={14} /> {reply._count.votes}
-                      </SubmitButton>
-                    </RateLimitForm>
-                    {viewer?.id === reply.authorId ? (
-                      <ContentMenu type="reply" id={reply.id} body={reply.body} />
-                    ) : null}
-                    {viewer ? <ReportForm targetType="REPLY" targetId={reply.id} returnTo={returnTo} /> : null}
-                  </div>
+        <ReplyComposerProvider>
+          <div className="space-y-3">
+            {displayReplies.map(({ reply, parentReply, depth }, index) => {
+              const indent = replyIndentLevels(depth);
+              return (
+                <div
+                  key={reply.id}
+                  className="reply-branch"
+                  data-depth={depth}
+                  data-indent-desktop={indent.desktop}
+                  data-indent-mobile={indent.mobile}
+                  style={{ "--reply-depth-desktop": indent.desktop, "--reply-depth-mobile": indent.mobile } as React.CSSProperties}
+                >
+                  <article id={`reply-${reply.id}`} className="card scroll-mt-24 p-5 sm:p-6">
+                    {reply.status === "PUBLISHED" ? (
+                      <div className="flex gap-3">
+                        <Link href={`/members/${reply.author.id}`}>
+                          <Avatar src={reply.author.imageUrl} name={reply.author.displayName} />
+                        </Link>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <Link href={`/members/${reply.author.id}`} className="font-extrabold">{reply.author.displayName}</Link>
+                            <UserRoleBadge role={reply.author.role} />
+                            <span className="muted">
+                              · {formatDistanceToNow(reply.createdAt, { addSuffix: true })}{reply.editedAt ? " · edited" : ""}
+                            </span>
+                            <a href={`#reply-${reply.id}`} className="ml-auto text-xs muted">#{index + 1}</a>
+                          </div>
+                          {parentReply ? (
+                            <a href={`#reply-${parentReply.id}`} className="mt-2 inline-block text-xs font-semibold muted">
+                              Replying to {parentReply.author.displayName}
+                            </a>
+                          ) : null}
+                          <div className="mt-4"><Markdown>{reply.body}</Markdown></div>
+                          <div className="mt-5 flex flex-wrap items-center gap-3">
+                            <RateLimitForm action={toggleReplyVote}>
+                              <input type="hidden" name="replyId" value={reply.id} />
+                              <input type="hidden" name="returnTo" value={returnTo} />
+                              <SubmitButton className={`button !min-h-0 !px-2.5 !py-1.5 ${reply.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
+                                <ThumbsUp size={14} /> {reply._count.votes}
+                              </SubmitButton>
+                            </RateLimitForm>
+                            {canViewerReply ? <NestedReplyControl replyId={reply.id} authorName={reply.author.displayName} /> : null}
+                            {viewer?.id === reply.authorId ? (
+                              <ContentMenu type="reply" id={reply.id} body={reply.body} />
+                            ) : null}
+                            {viewer ? <ReportForm targetType="REPLY" targetId={reply.id} returnTo={returnTo} /> : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 py-2">
+                        <p className="font-bold muted">{reply.status === "DELETED" ? "Reply deleted" : "Reply unavailable"}</p>
+                        <span className="text-xs muted">#{index + 1}</span>
+                      </div>
+                    )}
+                  </article>
+                  {reply.status === "PUBLISHED" && canViewerReply ? (
+                    <NestedReplyComposer threadId={thread.id} parentReplyId={reply.id} authorName={reply.author.displayName} uploadsEnabled={replyUploadsEnabled} />
+                  ) : null}
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        </ReplyComposerProvider>
       </section>
 
       <section className="card mt-7 p-5 sm:p-7">

@@ -80,6 +80,10 @@ export async function createReply(formData: FormData) {
   const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.reply);
   if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
+  const parentReplyId = z.preprocess(
+    (value) => value === null || value === "" ? undefined : value,
+    z.string().cuid().optional(),
+  ).parse(formData.get("parentReplyId"));
   const body = bodySchema.parse(formData.get("body"));
   const thread = await db.thread.findUnique({
     where: { id: threadId },
@@ -89,26 +93,37 @@ export async function createReply(formData: FormData) {
       authorId: true,
       isLocked: true,
       status: true,
-      category: { select: { postingPolicy: true } },
+      category: { select: { postingPolicy: true, archivedAt: true } },
     },
   });
   if (!thread || thread.status !== "PUBLISHED") throw new Error("Thread not found");
   if (thread.isLocked) throw new Error("This thread is locked");
+  if (thread.category.archivedAt) throw new Error("Thread not found");
   if (!canComment(user.role, thread.category.postingPolicy)) {
     throw new Error("You do not have permission to comment in this space");
   }
 
+  const parentReply = parentReplyId ? await db.reply.findUnique({
+    where: { id: parentReplyId },
+    select: { id: true, authorId: true, threadId: true, status: true },
+  }) : null;
+  if (parentReplyId && (!parentReply || parentReply.status !== "PUBLISHED" || parentReply.threadId !== threadId)) {
+    throw new Error("Parent reply not found in this thread");
+  }
+
   const reply = await db.$transaction(async (tx) => {
-    const created = await tx.reply.create({ data: { body, threadId, authorId: user.id } });
+    const created = await tx.reply.create({ data: { body, threadId, authorId: user.id, ...(parentReplyId ? { parentReplyId } : {}) } });
     await tx.thread.update({ where: { id: threadId }, data: { bumpedAt: new Date() } });
-    if (thread.authorId !== user.id) {
-      await tx.notification.create({ data: { type: "REPLY", recipientId: thread.authorId, actorId: user.id, threadId, replyId: created.id } });
+    const recipientId = parentReply?.authorId ?? thread.authorId;
+    if (recipientId !== user.id) {
+      await tx.notification.create({ data: { type: "REPLY", recipientId, actorId: user.id, threadId, replyId: created.id } });
     }
     return created;
   });
   await claimAttachments(body, user.id, "REPLY", reply.id);
   await notifyMentions(body, user.id, { threadId, replyId: reply.id });
   revalidatePath(`/t/${thread.slug}`);
+  return { status: "success" as const, replyId: reply.id };
 }
 
 export async function toggleThreadVote(formData: FormData) {

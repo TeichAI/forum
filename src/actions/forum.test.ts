@@ -60,6 +60,7 @@ const ids = {
   category: "cm000000000000000000000004",
   thread: "cm000000000000000000000005",
   reply: "cm000000000000000000000006",
+  parentReply: "cm000000000000000000000007",
   mailEntry: "cm000000000000000000000008",
   report: "cm000000000000000000000009",
 };
@@ -171,7 +172,7 @@ describe("discussion actions", () => {
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     mocks.db.thread.update.mockResolvedValue({});
     mocks.db.notification.create.mockResolvedValue({});
-    await createReply(form({ threadId: ids.thread, body: "A reply" }));
+    await expect(createReply(form({ threadId: ids.thread, body: "A reply" }))).resolves.toEqual({ status: "success", replyId: ids.reply });
     expect(mocks.db.reply.create).toHaveBeenCalledWith({ data: { body: "A reply", threadId: ids.thread, authorId: ids.user } });
     expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "REPLY", recipientId: ids.other, replyId: ids.reply }) });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/t/topic");
@@ -189,6 +190,44 @@ describe("discussion actions", () => {
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     await createReply(form({ threadId: ids.thread, body: "Self reply" }));
     expect(mocks.db.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a nested reply and notifies its direct parent author instead of the thread author", async () => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.admin, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "PUBLISHED" });
+    mocks.db.reply.create.mockResolvedValue({ id: ids.reply, parentReplyId: ids.parentReply });
+
+    await createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "A nested reply" }));
+
+    expect(mocks.db.reply.create).toHaveBeenCalledWith({ data: { body: "A nested reply", threadId: ids.thread, authorId: ids.user, parentReplyId: ids.parentReply } });
+    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: { type: "REPLY", recipientId: ids.other, actorId: ids.user, threadId: ids.thread, replyId: ids.reply } });
+  });
+
+  it("suppresses nested self-notifications", async () => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.user, threadId: ids.thread, status: "PUBLISHED" });
+    mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
+
+    await createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "Replying to myself" }));
+    expect(mocks.db.notification.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", null],
+    ["hidden", { id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "HIDDEN" }],
+    ["deleted", { id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "DELETED" }],
+    ["cross-thread", { id: ids.parentReply, authorId: ids.other, threadId: ids.admin, status: "PUBLISHED" }],
+  ])("rejects a %s nested-reply parent", async (_case, parent) => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.reply.findUnique.mockResolvedValue(parent);
+
+    await expect(createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "Invalid nested reply" }))).rejects.toThrow("Parent reply not found");
+    expect(mocks.db.reply.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects replies in archived spaces", async () => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: new Date() } });
+    await expect(createReply(form({ threadId: ids.thread, body: "Archived reply" }))).rejects.toThrow("Thread not found");
   });
 
   it.each(["ANNOUNCEMENTS", "ADMIN_ONLY"] as const)("denies members and moderators from starting discussions under %s", async (postingPolicy) => {

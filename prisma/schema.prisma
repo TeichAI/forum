@@ -224,22 +224,26 @@ model ThreadTag {
 }
 
 model Reply {
-  id        String        @id @default(cuid())
-  body      String
-  status    ContentStatus @default(PUBLISHED)
-  threadId  String
-  authorId  String
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  editedAt  DateTime?
-  deletedAt DateTime?
+  id            String        @id @default(cuid())
+  body          String
+  status        ContentStatus @default(PUBLISHED)
+  threadId      String
+  authorId      String
+  parentReplyId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  editedAt      DateTime?
+  deletedAt     DateTime?
 
   thread        Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   author        User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  parentReply   Reply?         @relation("NestedReplies", fields: [parentReplyId], references: [id], onDelete: SetNull)
+  childReplies  Reply[]        @relation("NestedReplies")
   votes         ReplyVote[]
   notifications Notification[]
 
   @@index([threadId, status, createdAt])
+  @@index([parentReplyId, status, createdAt])
   @@index([authorId, createdAt(sort: Desc)])
 }
 

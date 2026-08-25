@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, forwardRef, useActionState, useContext } from "react";
+import { createContext, forwardRef, useActionState, useContext, useEffect } from "react";
 import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import type { RateLimitedActionState } from "@/lib/rate-limit";
 
-type ActionResult = RateLimitedActionState | { status: string; message?: string } | void;
+export type ActionResult = RateLimitedActionState | { status: string; message?: string; replyId?: string } | void;
 type FormState = Exclude<ActionResult, void> | { status: "idle" };
 
 const RateLimitFormContext = createContext({ coolingDown: false });
@@ -15,13 +15,18 @@ export function useRateLimitFormStatus() {
 
 export const RateLimitForm = forwardRef<HTMLFormElement, Omit<React.ComponentProps<"form">, "action"> & {
   action: (formData: FormData) => Promise<ActionResult>;
-}>(function RateLimitForm({ action, children, ...props }, ref) {
+  onSuccess?: (result: Exclude<ActionResult, void>) => void;
+}>(function RateLimitForm({ action, children, onSuccess, ...props }, ref) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(async (_previous, formData) => {
     return await action(formData) ?? { status: "idle" };
   }, { status: "idle" });
   const rateState = state.status === "rate_limited" && "resetAt" in state ? state : null;
   const resetAt = rateState?.resetAt;
   const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
+
+  useEffect(() => {
+    if (state.status === "success") onSuccess?.(state);
+  }, [onSuccess, state]);
 
   return (
     <RateLimitFormContext.Provider value={{ coolingDown }}>

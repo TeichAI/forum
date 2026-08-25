@@ -127,6 +127,27 @@ button { cursor: pointer; }
 .prose img { max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--line); }
 .divider { border: 0; border-top: 1px solid var(--line); }
 
+/* Reply branches retain unlimited logical depth while indentation stays readable. */
+.reply-branch {
+  --reply-depth-desktop: 0;
+  --reply-depth-mobile: 0;
+  position: relative;
+  min-width: 0;
+  margin-left: calc(var(--reply-depth-desktop) * 1.5rem);
+}
+.reply-branch:not([data-depth="0"])::before {
+  position: absolute;
+  top: -0.8rem;
+  bottom: 50%;
+  left: -0.8rem;
+  width: 0.55rem;
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 1px solid var(--line-soft);
+  border-bottom-left-radius: 8px;
+  content: "";
+  pointer-events: none;
+}
+
 /* Page header + empty */
 .page-header { display: grid; gap: .35rem; }
 .page-header h1 { font-size: 1.9rem; font-weight: 900; letter-spacing: -.02em; line-height: 1.1; }
@@ -194,6 +215,8 @@ button { cursor: pointer; }
   .mail-reader-open .mail-list { display: none; }
   .mail-reader-open .mail-reader { display: block; }
   .mail-compose-page { width: 100%; height: calc(100dvh - 7.25rem); min-height: 32rem; margin: 0; border: 0; border-radius: 0; }
+  .reply-branch { margin-left: calc(var(--reply-depth-mobile) * 0.8rem); }
+  .reply-branch:not([data-depth="0"])::before { left: -0.48rem; width: 0.3rem; }
 }
 @media (min-width: 761px) {
   .mobile-only { display: none !important; }
