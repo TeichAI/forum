@@ -30,7 +30,6 @@ enum NotificationType {
   MENTION
   UPVOTE
   FOLLOW
-  MESSAGE
   MODERATION
 }
 
@@ -52,7 +51,8 @@ enum ReportTargetType {
   THREAD
   REPLY
   USER
-  MESSAGE
+  MAIL_ENTRY
+  LEGACY_MAIL
   SPACE
   TAG
   SETTINGS
@@ -88,8 +88,15 @@ enum ModerationActionType {
 enum AttachmentContext {
   THREAD
   REPLY
-  MESSAGE
+  MAIL_ENTRY
+  MAIL_DRAFT
   DRAFT
+}
+
+enum MailLocation {
+  INBOX
+  ARCHIVE
+  TRASH
 }
 
 enum SpacePostingPolicy {
@@ -119,21 +126,22 @@ model User {
   threadVotes         ThreadVote[]
   replyVotes          ReplyVote[]
   bookmarks           Bookmark[]
-  following           Follow[]           @relation("Following")
-  followers           Follow[]           @relation("Followers")
-  conversationsAsOne  Conversation[]     @relation("ConversationMemberOne")
-  conversationsAsTwo  Conversation[]     @relation("ConversationMemberTwo")
-  messages            Message[]
-  notifications       Notification[]     @relation("NotificationRecipient")
-  notificationActions Notification[]     @relation("NotificationActor")
-  reports             Report[]           @relation("ReportReporter")
-  assignedCases       ModerationCase[]   @relation("CaseAssignee")
-  moderationActions   ModerationAction[] @relation("Moderator")
-  moderationReceived  ModerationAction[] @relation("ModeratedUser")
-  authoredStaffNotes  StaffNote[]        @relation("StaffNoteAuthor")
-  receivedStaffNotes  StaffNote[]        @relation("StaffNoteUser")
-  blocksInitiated     Block[]            @relation("Blocker")
-  blocksReceived      Block[]            @relation("Blocked")
+  following           Follow[]             @relation("Following")
+  followers           Follow[]             @relation("Followers")
+  mailEntries         MailEntry[]          @relation("MailEntryAuthor")
+  mailParticipants    MailParticipant[]
+  mailDrafts          MailDraft[]          @relation("MailDraftOwner")
+  mailDraftRecipients MailDraftRecipient[]
+  notifications       Notification[]       @relation("NotificationRecipient")
+  notificationActions Notification[]       @relation("NotificationActor")
+  reports             Report[]             @relation("ReportReporter")
+  assignedCases       ModerationCase[]     @relation("CaseAssignee")
+  moderationActions   ModerationAction[]   @relation("Moderator")
+  moderationReceived  ModerationAction[]   @relation("ModeratedUser")
+  authoredStaffNotes  StaffNote[]          @relation("StaffNoteAuthor")
+  receivedStaffNotes  StaffNote[]          @relation("StaffNoteUser")
+  blocksInitiated     Block[]              @relation("Blocker")
+  blocksReceived      Block[]              @relation("Blocked")
   attachments         Attachment[]
 
   @@index([role, status])
@@ -279,38 +287,72 @@ model Follow {
   @@index([followingId])
 }
 
-model Conversation {
-  id            String         @id @default(cuid())
-  pairKey       String         @unique
-  memberOneId   String
-  memberTwoId   String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  lastMessageAt DateTime       @default(now())
-  memberOne     User           @relation("ConversationMemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
-  memberTwo     User           @relation("ConversationMemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
-  messages      Message[]
-  notifications Notification[]
+model MailThread {
+  id             String            @id @default(cuid())
+  subject        String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  lastActivityAt DateTime          @default(now())
+  entries        MailEntry[]
+  participants   MailParticipant[]
+  drafts         MailDraft[]
 
-  @@index([memberOneId, lastMessageAt(sort: Desc)])
-  @@index([memberTwoId, lastMessageAt(sort: Desc)])
+  @@index([lastActivityAt(sort: Desc), id])
 }
 
-model Message {
-  id             String         @id @default(cuid())
-  conversationId String
-  authorId       String
-  body           String
-  createdAt      DateTime       @default(now())
-  editedAt       DateTime?
-  readAt         DateTime?
-  deletedAt      DateTime?
-  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author         User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  notifications  Notification[]
+model MailEntry {
+  id        String     @id @default(cuid())
+  threadId  String
+  authorId  String
+  body      String
+  createdAt DateTime   @default(now())
+  thread    MailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author    User       @relation("MailEntryAuthor", fields: [authorId], references: [id], onDelete: Restrict)
 
-  @@index([conversationId, createdAt])
+  @@index([threadId, createdAt])
   @@index([authorId, createdAt(sort: Desc)])
+}
+
+model MailParticipant {
+  threadId     String
+  userId       String
+  location     MailLocation @default(INBOX)
+  starred      Boolean      @default(false)
+  lastReadAt   DateTime?
+  forcedUnread Boolean      @default(false)
+  removedAt    DateTime?
+  thread       MailThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([threadId, userId])
+  @@index([userId, location, removedAt])
+  @@index([userId, starred, removedAt])
+}
+
+model MailDraft {
+  id         String               @id @default(cuid())
+  ownerId    String
+  threadId   String?
+  subject    String               @default("")
+  body       String               @default("")
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  owner      User                 @relation("MailDraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  thread     MailThread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  recipients MailDraftRecipient[]
+
+  @@index([ownerId, updatedAt(sort: Desc)])
+  @@index([threadId, ownerId])
+}
+
+model MailDraftRecipient {
+  draftId     String
+  recipientId String
+  draft       MailDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@id([draftId, recipientId])
+  @@index([recipientId])
 }
 
 model Notification {
@@ -320,8 +362,6 @@ model Notification {
   actorId            String?
   threadId           String?
   replyId            String?
-  conversationId     String?
-  messageId          String?
   moderationActionId String?
   readAt             DateTime?
   createdAt          DateTime          @default(now())
@@ -329,8 +369,6 @@ model Notification {
   actor              User?             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   thread             Thread?           @relation(fields: [threadId], references: [id], onDelete: Cascade)
   reply              Reply?            @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  conversation       Conversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  message            Message?          @relation(fields: [messageId], references: [id], onDelete: Cascade)
   moderationAction   ModerationAction? @relation(fields: [moderationActionId], references: [id], onDelete: SetNull)
 
   @@index([recipientId, readAt, createdAt(sort: Desc)])

@@ -4,7 +4,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { RateLimitForm } from "@/components/ui/rate-limit-form";
 import { getModerationSettings } from "@/lib/moderation";
 
-export async function ReportForm({ targetType, targetId, returnTo }: { targetType: "THREAD" | "REPLY" | "USER" | "MESSAGE"; targetId: string; returnTo: string }) {
+export async function ReportForm({ targetType, targetId, returnTo }: { targetType: "THREAD" | "REPLY" | "USER" | "MAIL_ENTRY"; targetId: string; returnTo: string }) {
   const settings = await getModerationSettings();
   return (
     <details className="relative">

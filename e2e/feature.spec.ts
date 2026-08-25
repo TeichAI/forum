@@ -9,6 +9,7 @@ const secret = process.env.E2E_AUTH_SECRET!;
 let createdThreadUrl = "";
 let announcementThreadUrl = "";
 let adminOnlyThreadUrl = "";
+let privateMailThreadUrl = "";
 
 function sessionToken(userId: string) {
   const payload = Buffer.from(JSON.stringify({ userId, expiresAt: Date.now() + 30 * 60_000 })).toString("base64url");
@@ -87,7 +88,7 @@ test("a member updates their profile and publishes a tagged discussion", async (
   expect(missingPage?.status()).toBe(404);
 });
 
-test("another member replies, votes, follows, and starts a private conversation", async ({ context, page }) => {
+test("another member replies, votes, follows, and sends private Mail", async ({ context, page }) => {
   await useIdentity(context, featureIds.other);
   await page.goto(createdThreadUrl);
   await page.getByPlaceholder("Write a thoughtful reply…").fill("A thoughtful reply for @pond_member from the second member.");
@@ -99,16 +100,18 @@ test("another member replies, votes, follows, and starts a private conversation"
   await page.goto(`/members/${featureIds.member}`);
   await page.getByRole("button", { name: "Follow" }).click();
   await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
-  await page.getByRole("button", { name: "Message" }).click();
-  await expect(page).toHaveURL(/\/messages\//);
-  await page.getByPlaceholder("Message Updated Pond Member…").fill("A private hello from Pond Other.");
-  await page.getByRole("button", { name: "Send message" }).click();
+  await page.locator(`a[href="/mail/compose?to=${featureIds.member}"]`).click();
+  await expect(page).toHaveURL(/\/mail\/compose/);
+  await page.getByPlaceholder("Subject").fill("Private hello");
+  await page.getByLabel("Mail body").fill("A private hello from Pond Other.");
+  await page.getByRole("button", { name: "Send mail" }).click();
   await expect(page.getByText("A private hello from Pond Other.")).toBeVisible();
 });
 
 test("the recipient sees notifications and can report content for staff review", async ({ context, page }) => {
   await useIdentity(context, featureIds.member);
   await page.goto("/notifications");
+  await expect(page.getByRole("link", { name: "1 unread mail threads" })).toBeVisible();
   await expect(page.getByText(/replied to your discussion/)).toBeVisible();
   await expect(page.getByText(/upvoted your post/)).toBeVisible();
   await expect(page.getByText(/started following you/)).toBeVisible();
@@ -116,9 +119,46 @@ test("the recipient sees notifications and can report content for staff review",
   await page.getByRole("button", { name: /Mark all read/ }).click();
   await expect(page.getByRole("button", { name: /Mark all read/ })).toHaveCount(0);
 
-  await page.goto("/messages");
-  await page.getByRole("link", { name: /Pond Other/ }).click();
+  await page.goto("/mail");
+  await page.getByRole("searchbox", { name: "Search mail" }).fill("Private hello");
+  await page.getByRole("searchbox", { name: "Search mail" }).press("Enter");
+  await expect(page).toHaveURL(/q=Private\+hello/);
+  await page.getByRole("link", { name: /Private hello/ }).click();
   await expect(page.getByText("A private hello from Pond Other.")).toBeVisible();
+  await expect(page).toHaveURL(/\/mail\/[^?]+/);
+  privateMailThreadUrl = page.url();
+  await expect(page.getByRole("link", { name: "Mail" })).toBeVisible();
+  await page.getByPlaceholder("Reply to Pond Other…").fill("A private reply from Pond Member.");
+  await page.getByRole("button", { name: "Send reply" }).click();
+  await expect(page.locator(".mail-reader section").filter({ hasText: "A private reply from Pond Member." })).toBeVisible();
+
+  await page.getByRole("button", { name: "Archive mail" }).click();
+  await expect(page.getByRole("button", { name: "Move to inbox" })).toBeVisible();
+  await page.goto("/mail?folder=archive");
+  await page.getByRole("link", { name: /Private hello/ }).click();
+  await page.getByRole("button", { name: "Move to trash" }).click();
+  await expect(page.getByRole("button", { name: "Restore from trash" })).toBeVisible();
+  await page.goto("/mail?folder=trash");
+  await page.getByRole("link", { name: /Private hello/ }).click();
+  await page.getByRole("button", { name: "Restore from trash" }).click();
+  await expect(page.getByRole("button", { name: "Archive mail" })).toBeVisible();
+  await page.getByRole("button", { name: "Move to trash" }).click();
+  await expect(page.getByRole("button", { name: "Delete forever" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete forever" }).click();
+  await page.goto("/mail");
+  await expect(page.getByRole("link", { name: /Private hello/ })).toHaveCount(0);
+
+  await useIdentity(context, featureIds.other);
+  await page.goto(privateMailThreadUrl);
+  await page.getByPlaceholder("Reply to Updated Pond Member…").fill("This reply restores the removed mailbox copy.");
+  await page.getByRole("button", { name: "Send reply" }).click();
+  await expect(page.locator(".mail-reader section").filter({ hasText: "This reply restores the removed mailbox copy." })).toBeVisible();
+
+  await useIdentity(context, featureIds.member);
+  await page.goto("/mail");
+  await expect(page.getByRole("link", { name: "1 unread mail threads" })).toBeVisible();
+  await page.getByRole("link", { name: /Unread: Private hello/ }).click();
+  await expect(page.getByText("This reply restores the removed mailbox copy.")).toBeVisible();
 
   await page.goto(createdThreadUrl);
   const report = page.locator("details").filter({ has: page.locator('input[name="targetType"][value="THREAD"]') });
@@ -128,6 +168,61 @@ test("the recipient sees notifications and can report content for staff review",
   await report.getByLabel("Reason").selectOption({ label: "Off topic" });
   await report.getByLabel("Details").fill("Please review this browser-generated report.");
   await report.getByRole("button", { name: "Send report" }).click();
+});
+
+test("draft autosave and staff BCC remain private", async ({ context, page }) => {
+  await useIdentity(context, featureIds.member);
+  await page.goto(`/mail/compose?to=${featureIds.other}`);
+  await page.getByPlaceholder("Subject").fill("Autosaved browser draft");
+  await page.getByLabel("Mail body").fill("This draft should survive closing the composer.");
+  await expect(page.getByRole("status")).toHaveText("Draft saved", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page).toHaveURL(/folder=drafts/);
+  await expect(page.getByRole("link", { name: /Autosaved browser draft/ })).toBeVisible();
+
+  await useIdentity(context, featureIds.admin);
+  await page.goto("/mail/compose");
+  const recipientSearch = page.getByPlaceholder("Search name or @username");
+  await recipientSearch.fill("pond_member");
+  await expect(page.getByRole("option", { name: /Updated Pond Member.*@pond_member/ })).toBeVisible();
+  await recipientSearch.press("ArrowDown");
+  await expect(page.getByRole("option", { name: /Updated Pond Member.*@pond_member/ })).toHaveAttribute("aria-selected", "true");
+  await recipientSearch.press("Enter");
+  await page.getByPlaceholder("Add another recipient").fill("pond_other");
+  await page.getByRole("option", { name: /Pond Other.*@pond_other/ }).click();
+  await page.getByPlaceholder("Subject").fill("Private staff notice");
+  await page.getByLabel("Mail body").fill("Each member receives an isolated staff copy.");
+  await page.getByRole("button", { name: "Send 2 private copies" }).click();
+  await expect(page).toHaveURL(/folder=sent/);
+
+  await useIdentity(context, featureIds.member);
+  await page.goto("/mail");
+  await page.getByRole("link", { name: /Unread: Private staff notice/ }).click();
+  const memberReader = page.locator(".mail-reader");
+  await expect(memberReader.getByText("Each member receives an isolated staff copy.")).toBeVisible();
+  await expect(memberReader.getByText("@pond_admin").first()).toBeVisible();
+  await expect(memberReader.getByText("@pond_other")).toHaveCount(0);
+
+  await useIdentity(context, featureIds.other);
+  await page.goto("/mail");
+  await page.getByRole("link", { name: /Unread: Private staff notice/ }).click();
+  const otherReader = page.locator(".mail-reader");
+  await expect(otherReader.getByText("Each member receives an isolated staff copy.")).toBeVisible();
+  await expect(otherReader.getByText("@pond_admin").first()).toBeVisible();
+  await expect(otherReader.getByText("@pond_member")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/mail");
+  await expect(page.locator(".mail-folders")).toBeHidden();
+  await expect(page.locator(".mail-list")).toBeVisible();
+  await expect(page.locator(".mail-reader")).toBeHidden();
+  await page.getByRole("link", { name: /Private staff notice/ }).click();
+  await expect(page.locator(".mail-list")).toBeHidden();
+  await expect(page.locator(".mail-reader")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to mail list" })).toBeVisible();
+  await page.goto("/mail/compose");
+  await expect(page.locator(".mail-compose-form")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("an administrator reviews, hides, resolves, and locks reported content", async ({ context, page }) => {

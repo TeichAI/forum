@@ -13,8 +13,7 @@ const mocks = vi.hoisted(() => {
     bookmark: { findUnique: method(), create: method(), delete: method() },
     follow: { findUnique: method(), create: method(), delete: method() },
     notification: { create: method(), createMany: method(), updateMany: method() },
-    conversation: { findUnique: method(), upsert: method(), update: method() },
-    message: { create: method(), findUnique: method() },
+    mailEntry: { findUnique: method() },
     block: { findFirst: method(), upsert: method() },
     report: { findUnique: method(), upsert: method(), update: method() },
     moderationCase: { findFirst: method(), create: method(), update: method() },
@@ -49,8 +48,8 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
-  moderateReport, reportContent, sendMessage, setContentVisibility,
-  startConversation, suspendMember, toggleBookmark, toggleFollow, toggleReplyVote,
+  moderateReport, reportContent, setContentVisibility,
+  suspendMember, toggleBookmark, toggleFollow, toggleReplyVote,
   toggleThreadLock, toggleThreadVote, updateReply, updateThread,
 } from "./forum";
 
@@ -61,8 +60,7 @@ const ids = {
   category: "cm000000000000000000000004",
   thread: "cm000000000000000000000005",
   reply: "cm000000000000000000000006",
-  conversation: "cm000000000000000000000007",
-  message: "cm000000000000000000000008",
+  mailEntry: "cm000000000000000000000008",
   report: "cm000000000000000000000009",
 };
 const member = { id: ids.user, role: "MEMBER", status: "ACTIVE" };
@@ -106,8 +104,6 @@ describe("discussion actions", () => {
       () => deleteThread(new FormData()),
       () => updateReply(new FormData()),
       () => deleteReply(new FormData()),
-      () => startConversation(new FormData()),
-      () => sendMessage(form({ conversationId: ids.conversation })),
       () => blockMember(new FormData()),
       () => reportContent(new FormData()),
       () => markNotificationsRead(),
@@ -311,42 +307,14 @@ describe("member and content ownership actions", () => {
   });
 });
 
-describe("messaging, reports, and notifications", () => {
-  it("starts a stable conversation and rejects self or blocked messaging", async () => {
-    mocks.db.block.findFirst.mockResolvedValue(null);
-    mocks.db.conversation.upsert.mockResolvedValue({ id: ids.conversation });
-    await expect(startConversation(form({ userId: ids.other }))).rejects.toThrow(`redirect:/messages/${ids.conversation}`);
-    expect(mocks.db.conversation.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ pairKey: `${ids.user}:${ids.other}` }) }));
-    await expect(startConversation(form({ userId: ids.user }))).rejects.toThrow("message yourself");
-    mocks.db.block.findFirst.mockResolvedValue({});
-    await expect(startConversation(form({ userId: ids.other }))).rejects.toThrow("unavailable");
-  });
-
-  it("sends a message transaction, notification, and attachment claim", async () => {
-    mocks.uploadsEnabled.mockReturnValue(true);
-    mocks.db.conversation.findUnique.mockResolvedValue({ id: ids.conversation, memberOneId: ids.user, memberTwoId: ids.other });
-    mocks.db.block.findFirst.mockResolvedValue(null);
-    mocks.db.message.create.mockResolvedValue({ id: ids.message });
-    mocks.db.attachment.findMany.mockResolvedValue([]);
-    await sendMessage(form({ conversationId: ids.conversation, body: "Hello there" }));
-    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "MESSAGE", recipientId: ids.other, messageId: ids.message }) });
-    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/messages/${ids.conversation}`);
-  });
-
-  it("rejects inaccessible or blocked conversations", async () => {
-    mocks.db.conversation.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ memberOneId: ids.user, memberTwoId: ids.other });
-    await expect(sendMessage(form({ conversationId: ids.conversation, body: "Hello" }))).rejects.toThrow("Conversation not found");
-    mocks.db.block.findFirst.mockResolvedValue({});
-    await expect(sendMessage(form({ conversationId: ids.conversation, body: "Hello" }))).rejects.toThrow("unavailable");
-  });
-
+describe("reports, blocking, and notifications", () => {
   it("blocks another member idempotently", async () => {
     await blockMember(form({ userId: ids.other }));
     expect(mocks.db.block.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { blockerId: ids.user, blockedId: ids.other } }));
   });
 
   it.each([
-    ["THREAD", "thread"], ["REPLY", "reply"], ["USER", "user"], ["MESSAGE", "message"],
+    ["THREAD", "thread"], ["REPLY", "reply"], ["USER", "user"], ["MAIL_ENTRY", "mailEntry"],
   ] as const)("creates or reopens a %s report after checking visibility", async (targetType, modelName) => {
     mocks.db[modelName].findUnique.mockResolvedValue({ id: ids.thread });
     await reportContent(form({ targetType, targetId: ids.thread, reason: "Spam", details: "Repeated", returnTo: "/safe" }));
@@ -358,8 +326,8 @@ describe("messaging, reports, and notifications", () => {
   });
 
   it("rejects reports for invisible targets", async () => {
-    mocks.db.message.findUnique.mockResolvedValue(null);
-    await expect(reportContent(form({ targetType: "MESSAGE", targetId: ids.message, reason: "Spam" }))).rejects.toThrow("does not exist");
+    mocks.db.mailEntry.findUnique.mockResolvedValue(null);
+    await expect(reportContent(form({ targetType: "MAIL_ENTRY", targetId: ids.mailEntry, reason: "Spam" }))).rejects.toThrow("does not exist");
   });
 
   it("marks all unread notifications read", async () => {

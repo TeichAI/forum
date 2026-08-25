@@ -6,16 +6,15 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getVerifiedUserRole, requireModerator, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { claimAttachments } from "@/lib/attachments";
 import { canModerateRole } from "@/lib/moderation";
 import {
   consumeUserMutation,
-  conversationMessagePolicy,
   RATE_LIMIT_POLICIES,
   rateLimitedActionState,
   type RateLimitPolicy,
 } from "@/lib/rate-limit";
 import { canComment, canStartDiscussion } from "@/lib/space-posting-permissions";
-import { uploadsEnabled } from "@/lib/upload-capability";
 import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils";
 
 const titleSchema = z.string().trim().min(5).max(160);
@@ -28,13 +27,6 @@ async function mutationLimit(
 ) {
   const result = await consumeUserMutation(user, policy, additional);
   return result.allowed ? null : rateLimitedActionState(result);
-}
-
-async function claimAttachments(body: string, userId: string, context: "THREAD" | "REPLY" | "MESSAGE", targetId: string) {
-  if (!uploadsEnabled()) return;
-  const drafts = await db.attachment.findMany({ where: { userId, context: "DRAFT" }, select: { id: true, url: true } });
-  const ids = drafts.filter((attachment) => body.includes(attachment.url)).map((attachment) => attachment.id);
-  if (ids.length) await db.attachment.updateMany({ where: { id: { in: ids } }, data: { context, targetId } });
 }
 
 async function notifyMentions(body: string, actorId: string, data: { threadId?: string; replyId?: string }) {
@@ -234,46 +226,6 @@ export async function deleteReply(formData: FormData) {
   revalidatePath(`/t/${reply.thread.slug}`);
 }
 
-export async function startConversation(formData: FormData) {
-  const user = await requireUser();
-  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
-  if (limited) return limited;
-  const targetId = z.string().cuid().parse(formData.get("userId"));
-  if (targetId === user.id) throw new Error("You cannot message yourself");
-  const blocked = await db.block.findFirst({
-    where: { OR: [{ blockerId: user.id, blockedId: targetId }, { blockerId: targetId, blockedId: user.id }] },
-  });
-  if (blocked) throw new Error("Messaging is unavailable for this member");
-  const [memberOneId, memberTwoId] = [user.id, targetId].sort();
-  const conversation = await db.conversation.upsert({
-    where: { pairKey: `${memberOneId}:${memberTwoId}` },
-    update: {},
-    create: { pairKey: `${memberOneId}:${memberTwoId}`, memberOneId, memberTwoId },
-  });
-  redirect(`/messages/${conversation.id}`);
-}
-
-export async function sendMessage(formData: FormData) {
-  const user = await requireUser();
-  const conversationId = z.string().cuid().parse(formData.get("conversationId"));
-  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.message, [conversationMessagePolicy(conversationId)]);
-  if (limited) return limited;
-  const body = bodySchema.parse(formData.get("body"));
-  const conversation = await db.conversation.findUnique({ where: { id: conversationId } });
-  if (!conversation || (conversation.memberOneId !== user.id && conversation.memberTwoId !== user.id)) throw new Error("Conversation not found");
-  const recipientId = conversation.memberOneId === user.id ? conversation.memberTwoId : conversation.memberOneId;
-  const blocked = await db.block.findFirst({ where: { OR: [{ blockerId: user.id, blockedId: recipientId }, { blockerId: recipientId, blockedId: user.id }] } });
-  if (blocked) throw new Error("Messaging is unavailable for this member");
-  const message = await db.$transaction(async (tx) => {
-    const created = await tx.message.create({ data: { conversationId, authorId: user.id, body } });
-    await tx.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: new Date() } });
-    await tx.notification.create({ data: { type: "MESSAGE", recipientId, actorId: user.id, conversationId, messageId: created.id } });
-    return created;
-  });
-  await claimAttachments(body, user.id, "MESSAGE", message.id);
-  revalidatePath(`/messages/${conversationId}`);
-}
-
 export async function blockMember(formData: FormData) {
   const user = await requireUser();
   const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
@@ -281,14 +233,14 @@ export async function blockMember(formData: FormData) {
   const blockedId = z.string().cuid().parse(formData.get("userId"));
   if (blockedId === user.id) throw new Error("You cannot block yourself");
   await db.block.upsert({ where: { blockerId_blockedId: { blockerId: user.id, blockedId } }, update: {}, create: { blockerId: user.id, blockedId } });
-  revalidatePath("/messages");
+  revalidatePath("/mail");
 }
 
 export async function reportContent(formData: FormData) {
   const user = await requireUser();
   const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.report);
   if (limited) return limited;
-  const targetType = z.enum([ReportTargetType.THREAD, ReportTargetType.REPLY, ReportTargetType.USER, ReportTargetType.MESSAGE]).parse(formData.get("targetType"));
+  const targetType = z.enum([ReportTargetType.THREAD, ReportTargetType.REPLY, ReportTargetType.USER, ReportTargetType.MAIL_ENTRY]).parse(formData.get("targetType"));
   const targetId = z.string().cuid().parse(formData.get("targetId"));
   const reason = z.string().trim().min(3).max(80).parse(formData.get("reason"));
   const details = z.string().trim().max(1000).parse(formData.get("details") ?? "");
@@ -298,7 +250,7 @@ export async function reportContent(formData: FormData) {
       ? Boolean(await db.reply.findUnique({ where: { id: targetId }, select: { id: true } }))
       : targetType === "USER"
         ? Boolean(await db.user.findUnique({ where: { id: targetId }, select: { id: true } }))
-        : Boolean(await db.message.findUnique({ where: { id: targetId, conversation: { OR: [{ memberOneId: user.id }, { memberTwoId: user.id }] } }, select: { id: true } }));
+        : Boolean(await db.mailEntry.findUnique({ where: { id: targetId, thread: { participants: { some: { userId: user.id, removedAt: null } } } }, select: { id: true } }));
   if (!targetExists) throw new Error("The reported content does not exist or is not visible to you");
   const activeCase = await db.moderationCase.findFirst({
     where: { targetType, targetId, status: { in: ["OPEN", "IN_REVIEW"] } },

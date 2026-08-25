@@ -193,11 +193,11 @@ test("administrators manage spaces, tags, presets, and the complete audit log", 
   await expect(page.getByText("Seeded administrative audit event")).toBeVisible();
 });
 
-test("staff can review limited private-message context and empty filtered states", async ({ context, page }) => {
+test("staff can review limited private-Mail context and empty filtered states", async ({ context, page }) => {
   await useIdentity(context, staffIds.moderator);
   await page.goto(`/staff/reports/${staffIds.messageCase}`);
-  await expect(page.getByText("Private context is limited to two messages on either side.")).toBeVisible();
-  await expect(page.getByText("A private seeded message with deliberately limited staff context.")).toBeVisible();
+  await expect(page.getByText("Private context is limited to two mail entries on either side.")).toBeVisible();
+  await expect(page.getByText("A private seeded Mail entry with deliberately limited staff context.")).toBeVisible();
 
   await page.goto("/staff/reports?q=no-such-report-value");
   await expect(page.getByText("No cases match these filters.")).toBeVisible();

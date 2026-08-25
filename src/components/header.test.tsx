@@ -2,15 +2,16 @@ import { render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ unread: vi.fn(), mode: vi.fn(), accountMenu: vi.fn() }));
+const mocks = vi.hoisted(() => ({ unread: vi.fn(), mailCounts: vi.fn(), mode: vi.fn(), accountMenu: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { notification: { count: mocks.unread } } }));
+vi.mock("@/lib/mail", () => ({ getMailCounts: mocks.mailCounts }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/components/account-menu", () => ({ AccountMenu: (props: unknown) => { mocks.accountMenu(props); return <button>Custom account</button>; } }));
 vi.mock("@/components/new-thread-trigger", () => ({ NewThreadTrigger: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button> }));
 
 import { Header } from "./header";
 
-beforeEach(() => { vi.clearAllMocks(); mocks.mode.mockReturnValue(false); mocks.unread.mockResolvedValue(0); });
+beforeEach(() => { vi.clearAllMocks(); mocks.mode.mockReturnValue(false); mocks.unread.mockResolvedValue(0); mocks.mailCounts.mockResolvedValue({ unread: 0 }); });
 
 describe("Header", () => {
   it("renders signed-out navigation without querying notifications", async () => {
@@ -31,9 +32,11 @@ describe("Header", () => {
 
   it.each(["MEMBER", "MODERATOR", "ADMIN"])("renders %s controls and unread state", async (role) => {
     mocks.unread.mockResolvedValue(3);
+    mocks.mailCounts.mockResolvedValue({ unread: 2 });
     render(await Header({ viewer: { id: "user", displayName: "Owen Example", username: "owen", imageUrl: "https://img.clerk.com/avatar.png", role: role as "MEMBER" | "MODERATOR" | "ADMIN" } }));
     expect(screen.getByRole("button", { name: "New thread" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "3 unread notifications" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "2 unread mail threads" })).toHaveAttribute("href", "/mail");
     expect(screen.getByRole("link", { name: "Bookmarks" })).toBeInTheDocument();
     if (role === "MEMBER") expect(screen.queryByRole("link", { name: "Staff console" })).not.toBeInTheDocument();
     else expect(screen.getByRole("link", { name: "Staff console" })).toHaveAttribute("href", "/staff");

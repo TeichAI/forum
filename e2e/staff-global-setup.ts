@@ -14,8 +14,8 @@ export const staffIds = {
   memberCase: "cm200000000000000000000011",
   protectedCase: "cm200000000000000000000012",
   messageCase: "cm200000000000000000000013",
-  conversation: "cm200000000000000000000014",
-  message: "cm200000000000000000000015",
+  mailThread: "cm200000000000000000000014",
+  mailEntry: "cm200000000000000000000015",
   sourceTag: "cm200000000000000000000016",
   destinationTag: "cm200000000000000000000017",
 };
@@ -52,13 +52,10 @@ export default async function staffGlobalSetup() {
   await db.reply.create({ data: {
     id: staffIds.reply, body: "A seeded reply for staff review.", threadId: staffIds.thread, authorId: staffIds.member,
   } });
-  await db.conversation.create({ data: {
-    id: staffIds.conversation, pairKey: [staffIds.member, staffIds.reporter].sort().join(":"),
-    memberOneId: staffIds.member, memberTwoId: staffIds.reporter,
-  } });
-  await db.message.create({ data: {
-    id: staffIds.message, conversationId: staffIds.conversation, authorId: staffIds.member,
-    body: "A private seeded message with deliberately limited staff context.",
+  await db.mailThread.create({ data: {
+    id: staffIds.mailThread, subject: "Reported private mail",
+    participants: { create: [{ userId: staffIds.member }, { userId: staffIds.reporter }] },
+    entries: { create: { id: staffIds.mailEntry, authorId: staffIds.member, body: "A private seeded Mail entry with deliberately limited staff context." } },
   } });
 
   await db.moderationCase.create({ data: {
@@ -77,8 +74,8 @@ export default async function staffGlobalSetup() {
     reports: { create: { reporterId: staffIds.reporter, targetType: "USER", targetId: staffIds.protectedModerator, reason: "Other", details: "Role hierarchy regression case." } },
   } });
   await db.moderationCase.create({ data: {
-    id: staffIds.messageCase, targetType: "MESSAGE", targetId: staffIds.message,
-    reports: { create: { reporterId: staffIds.reporter, targetType: "MESSAGE", targetId: staffIds.message, reason: "Harassment", details: "Private-message report." } },
+    id: staffIds.messageCase, targetType: "MAIL_ENTRY", targetId: staffIds.mailEntry,
+    reports: { create: { reporterId: staffIds.reporter, targetType: "MAIL_ENTRY", targetId: staffIds.mailEntry, reason: "Harassment", details: "Private-Mail report." } },
   } });
 
   await db.moderationAction.createMany({ data: [

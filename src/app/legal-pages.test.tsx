@@ -19,7 +19,7 @@ describe("legal pages", () => {
     expect(within(article!).getByRole("heading", { name: "Limitation of liability" })).toBeInTheDocument();
     expect(container.querySelector('a[href="#community-rules"]')).toHaveTextContent("Community standards and acceptable use");
     expect(within(article!).getAllByRole("link", { name: "Privacy Policy" })[0]).toHaveAttribute("href", "/privacy");
-    expect(within(article!).getByRole("link", { name: "forum messages" })).toHaveAttribute("href", "/messages");
+    expect(within(article!).getByRole("link", { name: "Teich Mail" })).toHaveAttribute("href", "/mail");
     expect(container.querySelector('a[href^="mailto:"]')).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -35,12 +35,12 @@ describe("legal pages", () => {
     expect(within(article!).getByRole("heading", { name: "Information we collect" })).toBeInTheDocument();
     expect(within(article!).getByRole("heading", { name: "Retention and account deletion" })).toBeInTheDocument();
     expect(within(article!).getByRole("heading", { name: "United States state privacy disclosures" })).toBeInTheDocument();
-    expect(within(article!).getByText(/do not use private messages or forum content to train/i)).toBeInTheDocument();
+    expect(within(article!).getByText(/do not use private Mail or forum content to train/i)).toBeInTheDocument();
     expect(within(article!).getByText(/do not sell personal information for money/i)).toBeInTheDocument();
     expect(within(article!).getByText(/forum marks the local account deleted and clears its stored email address/i)).toBeInTheDocument();
     expect(container.querySelector('a[href="#retention"]')).toHaveTextContent("Retention and account deletion");
     expect(within(article!).getAllByRole("link", { name: "Terms of Service" })[0]).toHaveAttribute("href", "/terms");
-    expect(within(article!).getByRole("link", { name: "forum messages" })).toHaveAttribute("href", "/messages");
+    expect(within(article!).getByRole("link", { name: "Teich Mail" })).toHaveAttribute("href", "/mail");
     expect(container.querySelector('a[href^="mailto:"]')).toBeNull();
     expect(await axe(container)).toHaveNoViolations();
   });

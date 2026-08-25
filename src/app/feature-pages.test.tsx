@@ -4,16 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   viewer: vi.fn(), requireUser: vi.fn(), requireModerator: vi.fn(), notFound: vi.fn(), redirect: vi.fn(), listThreads: vi.fn(),
-  thread: vi.fn(), user: vi.fn(), conversation: vi.fn(), transaction: vi.fn(), notifications: vi.fn(), reports: vi.fn(), actions: vi.fn(),
-  messageUpdate: vi.fn(), notificationUpdate: vi.fn(),
+  thread: vi.fn(), user: vi.fn(), notifications: vi.fn(), reports: vi.fn(), actions: vi.fn(),
+  notificationUpdate: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser, requireModerator: mocks.requireModerator }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
 vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, canModerate: (user: { role?: string } | null) => user?.role === "MODERATOR" || user?.role === "ADMIN" }));
 vi.mock("@/lib/db", () => ({ db: {
-  thread: { findUnique: mocks.thread }, user: { findUnique: mocks.user }, conversation: { findUnique: mocks.conversation },
+  thread: { findUnique: mocks.thread }, user: { findUnique: mocks.user },
   notification: { findMany: mocks.notifications, updateMany: mocks.notificationUpdate }, report: { findMany: mocks.reports },
-  moderationAction: { findMany: mocks.actions }, message: { updateMany: mocks.messageUpdate }, $transaction: mocks.transaction,
+  moderationAction: { findMany: mocks.actions },
 } }));
 vi.mock("@/components/markdown", () => ({ Markdown: ({ children }: { children: string }) => <div>{children}</div> }));
 vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Editor" /> }));
@@ -23,7 +23,6 @@ vi.mock("@/components/forum/content-menu", () => ({ ContentMenu: ({ type }: { ty
 vi.mock("@/components/ui/avatar", () => ({ Avatar: ({ name }: { name: string }) => <span>{`Avatar ${name}`}</span> }));
 vi.mock("@/components/ui/submit-button", () => ({ SubmitButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button> }));
 
-import ConversationPage from "./messages/[id]/page";
 import MemberPage, { generateMetadata as memberMetadata } from "./members/[id]/page";
 import ModerationPage from "./moderation/page";
 import NotificationsPage from "./notifications/page";
@@ -45,8 +44,6 @@ beforeEach(() => {
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.listThreads.mockResolvedValue([]);
-  mocks.transaction.mockResolvedValue([]);
-  mocks.messageUpdate.mockReturnValue(Promise.resolve({ count: 0 }));
   mocks.notificationUpdate.mockReturnValue(Promise.resolve({ count: 0 }));
 });
 
@@ -143,7 +140,7 @@ describe("member profile", () => {
     mocks.listThreads.mockResolvedValue([{ id: "thread", title: "Recent topic" }]);
     render(await MemberPage({ params: Promise.resolve({ id: "other" }) }));
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Message" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Mail" })).toHaveAttribute("href", "/mail/compose?to=other");
     expect(screen.queryByRole("button", { name: "Update role" })).not.toBeInTheDocument();
     expect(screen.getByText("Recent topic")).toBeInTheDocument();
   });
@@ -166,49 +163,15 @@ describe("member profile", () => {
   });
 });
 
-describe("conversation page", () => {
-  it("marks incoming content read and renders both message directions", async () => {
-    mocks.requireUser.mockResolvedValue(member);
-    mocks.conversation.mockResolvedValue({
-      id: "conversation", memberOneId: member.id, memberTwoId: other.id, memberOne: member, memberTwo: other,
-      messages: [
-        { id: "own", authorId: member.id, author: member, body: "Own message", createdAt: now },
-        { id: "incoming", authorId: other.id, author: other, body: "Incoming message", createdAt: now },
-      ],
-    });
-    render(await ConversationPage({ params: Promise.resolve({ id: "conversation" }) }));
-    expect(screen.getByText("Own message")).toBeInTheDocument();
-    expect(screen.getByText("Incoming message")).toBeInTheDocument();
-    expect(screen.getByText("Report MESSAGE")).toBeInTheDocument();
-    expect(mocks.transaction).toHaveBeenCalled();
-  });
-
-  it("renders empty conversation when the viewer is member two", async () => {
-    mocks.requireUser.mockResolvedValue(member);
-    mocks.conversation.mockResolvedValue({ id: "conversation", memberOneId: other.id, memberTwoId: member.id, memberOne: other, memberTwo: member, messages: [] });
-    render(await ConversationPage({ params: Promise.resolve({ id: "conversation" }) }));
-    expect(screen.getByText("Say hello to Other.")).toBeInTheDocument();
-  });
-
-  it("rejects missing and inaccessible conversations", async () => {
-    mocks.requireUser.mockResolvedValue(member);
-    mocks.conversation.mockResolvedValueOnce(null).mockResolvedValueOnce({ memberOneId: "x", memberTwoId: "y" });
-    await expect(ConversationPage({ params: Promise.resolve({ id: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
-    await expect(ConversationPage({ params: Promise.resolve({ id: "private" }) })).rejects.toThrow("NEXT_NOT_FOUND");
-  });
-});
-
 describe("notification and moderation pages", () => {
   it("renders notification destinations, unread state, and mark-all action", async () => {
     mocks.requireUser.mockResolvedValue(member);
     mocks.notifications.mockResolvedValue([
-      { id: "message", type: "MESSAGE", conversationId: "conversation", thread: null, replyId: null, actor: other, readAt: null, createdAt: now },
       { id: "reply", type: "REPLY", conversationId: null, thread: { slug: "topic", title: "Topic" }, replyId: "reply", actor: other, readAt: now, createdAt: now },
-      { id: "system", type: "MODERATION", conversationId: null, thread: null, replyId: null, actor: null, readAt: now, createdAt: now },
+      { id: "system", type: "MODERATION", thread: null, replyId: null, actor: null, readAt: null, createdAt: now },
     ]);
     render(await NotificationsPage());
     expect(screen.getByRole("button", { name: /Mark all read/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /sent you a message/ })).toHaveAttribute("href", "/messages/conversation");
     expect(screen.getByRole("link", { name: /replied to your discussion/ })).toHaveAttribute("href", "/t/topic#reply-reply");
     expect(screen.getByRole("link", { name: /moderation update/ })).toHaveAttribute("href", "/notifications");
   });

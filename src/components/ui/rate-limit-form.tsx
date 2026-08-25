@@ -4,8 +4,8 @@ import { createContext, forwardRef, useActionState, useContext } from "react";
 import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import type { RateLimitedActionState } from "@/lib/rate-limit";
 
-type ActionResult = RateLimitedActionState | void;
-type FormState = RateLimitedActionState | { status: "idle" };
+type ActionResult = RateLimitedActionState | { status: string; message?: string } | void;
+type FormState = Exclude<ActionResult, void> | { status: "idle" };
 
 const RateLimitFormContext = createContext({ coolingDown: false });
 
@@ -19,17 +19,18 @@ export const RateLimitForm = forwardRef<HTMLFormElement, Omit<React.ComponentPro
   const [state, formAction, pending] = useActionState<FormState, FormData>(async (_previous, formData) => {
     return await action(formData) ?? { status: "idle" };
   }, { status: "idle" });
-  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
+  const rateState = state.status === "rate_limited" && "resetAt" in state ? state : null;
+  const resetAt = rateState?.resetAt;
   const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
 
   return (
     <RateLimitFormContext.Provider value={{ coolingDown }}>
       <form {...props} ref={ref} action={formAction} aria-busy={pending}>
         {children}
-        {state.status === "rate_limited" ? (
+        {rateState ? (
           <div className="mt-3 space-y-1 text-sm" style={{ color: "var(--danger)" }} role="alert">
-            <p className="font-semibold">{state.message}</p>
-            <RateLimitCountdown resetAt={state.resetAt} onReady={onReady} />
+            <p className="font-semibold">{rateState.message}</p>
+            <RateLimitCountdown resetAt={rateState.resetAt} onReady={onReady} />
           </div>
         ) : null}
       </form>

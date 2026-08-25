@@ -19,6 +19,8 @@ vi.mock("@/lib/db", () => ({ db: mocks.db }));
 import {
   RATE_LIMIT_POLICIES,
   consumeRateLimit,
+  mailSendPolicies,
+  mailThreadPolicy,
   memberMutationPolicies,
   railwayClientIp,
   rateLimitSubject,
@@ -220,5 +222,11 @@ describe("policy selection", () => {
       RATE_LIMIT_POLICIES.memberMutation,
       RATE_LIMIT_POLICIES.interaction,
     ]);
+  });
+
+  it("charges Mail fan-out proportionally and scopes reply bursts per thread", () => {
+    expect(mailSendPolicies({ role: "MEMBER" }, 1)).toEqual([RATE_LIMIT_POLICIES.memberMutation, { ...RATE_LIMIT_POLICIES.mail, cost: 1 }]);
+    expect(mailSendPolicies({ role: "MODERATOR" }, 12)).toEqual([{ ...RATE_LIMIT_POLICIES.staff, cost: 12 }]);
+    expect(mailThreadPolicy("thread")).toEqual({ scope: "mutation:mail:thread:thread", capacity: 12, refillPerSecond: 1 / 6 });
   });
 });

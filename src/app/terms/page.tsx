@@ -14,7 +14,7 @@ const sections: LegalSection[] = [
     id: "agreement",
     title: "Agreement to these Terms",
     content: <>
-      <p>These Terms of Service (the <strong>“Terms”</strong>) are a binding agreement between you and TeichAI, the operator of Teich Forum (<strong>“Teich,” “we,” “us,”</strong> or <strong>“our”</strong>). They govern your access to and use of the Teich Forum website, accounts, discussions, profiles, messages, uploads, moderation tools, and related services (collectively, the <strong>“Service”</strong>).</p>
+      <p>These Terms of Service (the <strong>“Terms”</strong>) are a binding agreement between you and TeichAI, the operator of Teich Forum (<strong>“Teich,” “we,” “us,”</strong> or <strong>“our”</strong>). They govern your access to and use of the Teich Forum website, accounts, discussions, profiles, Teich Mail, uploads, moderation tools, and related services (collectively, the <strong>“Service”</strong>).</p>
       <p>By visiting the Service, creating an account, joining a waitlist, or otherwise using the Service, you agree to these Terms and acknowledge our <Link href="/privacy">Privacy Policy</Link>. If you do not agree, do not access or use the Service. If you use the Service for an organization, you represent that you have authority to bind that organization, and “you” includes that organization.</p>
       <p>Some features may display additional rules or requirements. Those feature-specific terms become part of these Terms when you use the feature. If they conflict with these Terms, the more specific terms control for that feature.</p>
     </>,
@@ -63,19 +63,19 @@ const sections: LegalSection[] = [
     id: "user-content",
     title: "Your content and the license you give us",
     content: <>
-      <p><strong>You keep ownership of content you submit.</strong> “User Content” includes threads, replies, profile information, messages, reports, images, feedback, and other material you provide. You are responsible for your User Content and for having all rights and permissions needed to submit it.</p>
-      <p>You grant Teich a worldwide, non-exclusive, royalty-free license to host, store, reproduce, format, adapt for technical purposes, display, perform, and distribute your User Content only as reasonably necessary to operate, secure, improve, and promote the Service. For content you publish publicly, this license includes displaying it to visitors and in previews or examples that promote the Teich community. For private messages and non-public reports, the license is limited to delivering the feature, safety and moderation, support, legal compliance, and enforcing these Terms.</p>
+      <p><strong>You keep ownership of content you submit.</strong> “User Content” includes threads, replies, profile information, Mail, reports, images, feedback, and other material you provide. You are responsible for your User Content and for having all rights and permissions needed to submit it.</p>
+      <p>You grant Teich a worldwide, non-exclusive, royalty-free license to host, store, reproduce, format, adapt for technical purposes, display, perform, and distribute your User Content only as reasonably necessary to operate, secure, improve, and promote the Service. For content you publish publicly, this license includes displaying it to visitors and in previews or examples that promote the Teich community. For private Mail and non-public reports, the license is limited to delivering the feature, safety and moderation, support, legal compliance, and enforcing these Terms.</p>
       <p>This license lasts while your content is available through the Service and for a reasonable period afterward in backups, security records, legal records, and materials already shared outside our control. Removing content does not require others to delete copies they made while it was public. We will not claim ownership of your User Content merely because you post it.</p>
       <p>You represent that your User Content and our permitted use of it do not violate law, these Terms, or anyone else’s rights. Do not submit confidential information, trade secrets, access credentials, regulated data, or material you are not comfortable sharing with the intended audience.</p>
     </>,
   },
   {
     id: "public-private",
-    title: "Public posts, messages, and community interactions",
+    title: "Public posts, Mail, and community interactions",
     content: <>
       <p>Profiles, usernames, display names, biographies, avatars, threads, replies, tags, votes, follower relationships, and similar community activity may be visible to other users or the public. Public content may be indexed by search engines, quoted, linked, archived, or copied by others.</p>
-      <p>Direct messages are intended for conversation participants, but they are not end-to-end encrypted and are not guaranteed to be confidential. Recipients can copy or share them. Authorized staff or service providers may access message data when it is reported, needed to investigate abuse or a technical issue, required to protect users or the Service, or required by law.</p>
-      <p>Mentions, replies, votes, follows, messages, reports, and moderation actions can generate notifications. Blocking limits certain interactions but cannot erase prior content, prevent every indirect interaction, or control activity outside the Service.</p>
+      <p>Teich Mail is intended for the two participants in each private thread, but it is not end-to-end encrypted and is not guaranteed to be confidential. Staff BCC creates separate one-to-one threads. Recipients can copy or share Mail. Authorized staff or service providers may access limited Mail data when it is reported, needed to investigate abuse or a technical issue, required to protect users or the Service, or required by law.</p>
+      <p>Mentions, replies, votes, follows, reports, and moderation actions can generate notifications. Mail uses its own unread count. Blocking limits certain interactions but cannot erase prior content, prevent every indirect interaction, or control activity outside the Service.</p>
     </>,
   },
   {
@@ -84,7 +84,7 @@ const sections: LegalSection[] = [
     content: <>
       <p>We may review, label, move, lock, hide, restore, limit, or remove content; restrict features; suspend or terminate accounts; preserve evidence; and take other proportionate action when we reasonably believe it is necessary to enforce these Terms, protect people or the Service, comply with law, or maintain community quality. We may act on reports or on our own initiative and may use automated signals such as rate limits alongside human review.</p>
       <p>We are not required to monitor all content and cannot guarantee that objectionable material will be removed immediately. Moderation decisions require judgment and may be imperfect. Repeated violations, severe harm, evasion, or risk to others may lead to stronger action without prior warning. Staff roles and permissions do not create employment, agency, or a promise of continued status.</p>
-      <p>Use the in-product report feature for content or conduct concerns. Include enough context for a fair review and do not submit knowingly false or abusive reports. If you believe an action was mistaken, send a private forum message to a Teich administrator or moderator with your username, the affected content or action, and a concise explanation. We may limit repetitive, abusive, or bad-faith appeals.</p>
+      <p>Use the in-product report feature for content or conduct concerns. Include enough context for a fair review and do not submit knowingly false or abusive reports. If you believe an action was mistaken, send Teich Mail to an administrator or moderator with your username, the affected content or action, and a concise explanation. We may limit repetitive, abusive, or bad-faith appeals.</p>
     </>,
   },
   {
@@ -100,7 +100,7 @@ const sections: LegalSection[] = [
     id: "copyright",
     title: "Copyright and rights complaints",
     content: <>
-      <p>We respect intellectual-property rights. If you believe content on the Service infringes your copyright, use the content’s report control and send a private forum message to a Teich administrator containing: your forum username; identification of the protected work; the exact location of the allegedly infringing material; a statement of your good-faith belief that the use is unauthorized; a statement, under penalty of perjury, that the notice is accurate and you are authorized to act; and your physical or electronic signature.</p>
+      <p>We respect intellectual-property rights. If you believe content on the Service infringes your copyright, use the content’s report control and send Teich Mail to an administrator containing: your forum username; identification of the protected work; the exact location of the allegedly infringing material; a statement of your good-faith belief that the use is unauthorized; a statement, under penalty of perjury, that the notice is accurate and you are authorized to act; and your physical or electronic signature.</p>
       <p>We may forward a complaint to the affected user. If your content was removed by mistake or misidentification, you may send a counter-notice identifying the removed material and explaining your lawful basis to use it. Knowingly material misrepresentations may create liability. Trademark, privacy, or other rights complaints should identify the right, the material, and the requested action with comparable detail.</p>
     </>,
   },
@@ -124,7 +124,7 @@ const sections: LegalSection[] = [
     id: "termination",
     title: "Ending use, account deletion, and survival",
     content: <>
-      <p>You may stop using the Service at any time and may request account deletion through account settings when available. Before deleting your account, remove public content you do not want to remain, where those controls are available. Account deletion disables access and removes or disconnects certain account data, but it does not necessarily erase all User Content, messages delivered to others, moderation records, reports, security records, or backups. See the <Link href="/privacy#retention">Privacy Policy’s retention section</Link> for details.</p>
+      <p>You may stop using the Service at any time and may request account deletion through account settings when available. Before deleting your account, remove public content you do not want to remain, where those controls are available. Account deletion disables access and removes or disconnects certain account data, but it does not necessarily erase all User Content, Mail delivered to others, moderation records, reports, security records, or backups. See the <Link href="/privacy#retention">Privacy Policy’s retention section</Link> for details.</p>
       <p>We may suspend or terminate access if you breach these Terms, create risk or legal exposure, fail to maintain an account, or if we discontinue the Service. Where appropriate, we may give notice or an opportunity to appeal; we are not required to do so when immediate action is reasonably necessary.</p>
       <p>Provisions that by their nature should survive termination do survive, including ownership, content licenses for retained copies, moderation and record retention, disclaimers, limitations of liability, indemnity, disputes, and general terms.</p>
     </>,
@@ -176,7 +176,7 @@ const sections: LegalSection[] = [
     title: "Changes and contact",
     content: <>
       <p>We may update these Terms as the Service or law changes. We will change the “Last updated” date and, for material changes, provide additional notice reasonably suited to the change, such as a prominent Service notice or account communication. Unless stated otherwise, revised Terms apply when posted. If you continue using the Service after they take effect, you accept the revised Terms.</p>
-      <p>Questions, legal notices, copyright complaints, and dispute notices should be sent through a private forum message to a Teich administrator or moderator. Visit your <Link href="/messages">forum messages</Link> to continue an existing conversation. To start one, open a Teich staff member’s profile from one of their forum posts and choose <strong>Message</strong>. Do not include passwords, verification codes, or unnecessary sensitive information.</p>
+      <p>Questions, legal notices, copyright complaints, and dispute notices should be sent through Teich Mail to an administrator or moderator. Visit your <Link href="/mail">Teich Mail</Link> to continue an existing thread. To start one, open a Teich staff member’s profile and choose <strong>Mail</strong>. Do not include passwords, verification codes, or unnecessary sensitive information.</p>
     </>,
   },
 ];
@@ -192,7 +192,7 @@ export default function TermsPage() {
       highlights={[
         "You keep ownership of what you create and give us only the license needed to run the forum.",
         "Be lawful, honest, and respectful. Harassment, exploitation, doxxing, scams, malware, and evasion are prohibited.",
-        "Public posts are public. Direct messages are limited-access, but they are not end-to-end encrypted.",
+        "Public posts are public. Teich Mail is limited-access, but it is not end-to-end encrypted.",
         "We may moderate content and accounts to enforce these rules and protect the community.",
       ]}
       sections={sections}

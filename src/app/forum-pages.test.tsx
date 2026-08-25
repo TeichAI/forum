@@ -2,12 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  category: vi.fn(), tag: vi.fn(), tagAlias: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(),
+  category: vi.fn(), tag: vi.fn(), tagAlias: vi.fn(), bookmarks: vi.fn(),
   viewer: vi.fn(), requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   category: { findUnique: mocks.category },
-  tag: { findUnique: mocks.tag }, tagAlias: { findUnique: mocks.tagAlias }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
+  tag: { findUnique: mocks.tag }, tagAlias: { findUnique: mocks.tagAlias }, bookmark: { findMany: mocks.bookmarks },
 } }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
@@ -24,7 +24,6 @@ vi.mock("@/components/new-thread-trigger", () => ({ NewThreadTrigger: ({ categor
 
 import BookmarksPage from "./bookmarks/page";
 import CategoryPage, { generateMetadata as categoryMetadata } from "./c/[slug]/page";
-import MessagesPage from "./messages/page";
 import SearchPage from "./search/page";
 import SettingsPage from "./settings/page";
 import SuspendedPage from "./suspended/page";
@@ -123,20 +122,6 @@ describe("protected utility pages", () => {
     mocks.bookmarks.mockResolvedValue([]);
     rerender(await BookmarksPage());
     expect(screen.getByText("Nothing saved yet")).toBeInTheDocument();
-  });
-
-  it("renders conversations from either side with and without messages", async () => {
-    const other = { id: "other", displayName: "Other", username: "other", imageUrl: null };
-    mocks.conversations.mockResolvedValue([
-      { id: "one", memberOneId: "user", memberTwoId: "other", memberOne: user, memberTwo: other, lastMessageAt: new Date(), messages: [{ body: "Latest message" }] },
-      { id: "two", memberOneId: "other", memberTwoId: "user", memberOne: other, memberTwo: user, lastMessageAt: new Date(), messages: [] },
-    ]);
-    const { rerender } = render(await MessagesPage());
-    expect(screen.getByText("Latest message")).toBeInTheDocument();
-    expect(screen.getByText("Start the conversation")).toBeInTheDocument();
-    mocks.conversations.mockResolvedValue([]);
-    rerender(await MessagesPage());
-    expect(screen.getByText("No conversations yet")).toBeInTheDocument();
   });
 
   it("renders profile settings defaults", async () => {

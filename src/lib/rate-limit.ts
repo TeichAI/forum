@@ -40,7 +40,7 @@ export const RATE_LIMIT_POLICIES = {
   interaction: { scope: "mutation:interaction", capacity: 60, refillPerSecond: 0.5 },
   thread: { scope: "mutation:thread", capacity: 5, refillPerSecond: 1 / 600 },
   reply: { scope: "mutation:reply", capacity: 20, refillPerSecond: 1 / 60 },
-  message: { scope: "mutation:message", capacity: 30, refillPerSecond: 1 / 3 },
+  mail: { scope: "mutation:mail", capacity: 30, refillPerSecond: 1 / 3 },
   report: { scope: "mutation:report", capacity: 5, refillPerSecond: 1 / 1_800 },
   upload: { scope: "mutation:upload", capacity: 10, refillPerSecond: 1 / 360 },
   account: { scope: "mutation:account", capacity: 10, refillPerSecond: 1 / 600 },
@@ -106,8 +106,16 @@ export function memberMutationPolicies(
   return [RATE_LIMIT_POLICIES.memberMutation, ...(policy ? [policy] : []), ...additional];
 }
 
-export function conversationMessagePolicy(conversationId: string): RateLimitPolicy {
-  return { scope: `mutation:message:conversation:${conversationId}`, capacity: 12, refillPerSecond: 1 / 6 };
+export function mailThreadPolicy(threadId: string): RateLimitPolicy {
+  return { scope: `mutation:mail:thread:${threadId}`, capacity: 12, refillPerSecond: 1 / 6 };
+}
+
+export function mailSendPolicies(user: { role: string }, recipientCount: number): RateLimitPolicy[] {
+  const cost = Math.max(1, recipientCount);
+  if (user.role === "MODERATOR" || user.role === "ADMIN") {
+    return [{ ...RATE_LIMIT_POLICIES.staff, cost }];
+  }
+  return [RATE_LIMIT_POLICIES.memberMutation, { ...RATE_LIMIT_POLICIES.mail, cost }];
 }
 
 export async function consumeRateLimit(

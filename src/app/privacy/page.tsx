@@ -28,25 +28,25 @@ const sections: LegalSection[] = [
         <li><strong>Account and identity information:</strong> email address, username, display name, profile photo, authentication method, and, when requested by our identity provider, first and last name, password, verification status, or multifactor settings. The forum application does not store your password; Clerk processes authentication credentials.</li>
         <li><strong>Profile information:</strong> biography, public-facing name, avatar, role, account status, and account preferences.</li>
         <li><strong>Community content:</strong> threads, replies, tags, mentions, edits, votes, bookmarks, follows, blocks, and the time associated with those actions.</li>
-        <li><strong>Communications:</strong> direct messages, waitlist submissions, account and support communications, and information you send when contacting us.</li>
+        <li><strong>Communications:</strong> Teich Mail, waitlist submissions, account and support communications, and information you send when contacting us.</li>
         <li><strong>Safety and moderation information:</strong> reports, reasons, supporting details, appeals, staff notes, case assignments, enforcement actions, suspension details, and related records.</li>
-        <li><strong>Files and media:</strong> images you upload to posts, replies, drafts, messages, or your account, together with file name, size, storage key, URL, owner, and upload time.</li>
+        <li><strong>Files and media:</strong> images you upload to posts, replies, Mail drafts, Mail entries, or your account, together with file name, size, storage key, URL, owner, and upload time.</li>
       </ul>
       <h3>Information collected automatically</h3>
       <ul>
         <li><strong>Technical and device data:</strong> IP address, browser and device type, operating system, referring page, request time, pages or routes requested, and diagnostic or security events. The forum’s rate limiter converts a signed-out visitor’s IP address into a one-way keyed hash and does not persist or log the raw IP in the forum database; infrastructure providers may still process IP addresses in ordinary network and security logs.</li>
         <li><strong>Session and security data:</strong> cookies or similar identifiers, session status, authentication events, bot-detection signals, and rate-limit bucket data used to keep accounts and the Service secure.</li>
-        <li><strong>Usage data:</strong> content views, notification state, message read state, feature interactions, timestamps, and records needed to deliver requested actions. Discussion view counts may be stored in aggregate with the discussion.</li>
+        <li><strong>Usage data:</strong> content views, notification state, Mail read and folder state, feature interactions, timestamps, and records needed to deliver requested actions. Discussion view counts may be stored in aggregate with the discussion.</li>
       </ul>
       <h3>Information from others</h3>
-      <p>We receive account and authentication data from Clerk; profile or account data from GitHub when you choose GitHub sign-in; upload metadata from UploadThing; information about you that other users include in posts, messages, mentions, or reports; and security or diagnostic information from infrastructure providers. The data received from a social provider depends on your settings and the permissions shown during connection.</p>
+      <p>We receive account and authentication data from Clerk; profile or account data from GitHub when you choose GitHub sign-in; upload metadata from UploadThing; information about you that other users include in posts, Mail, mentions, or reports; and security or diagnostic information from infrastructure providers. The data received from a social provider depends on your settings and the permissions shown during connection.</p>
     </>,
   },
   {
     id: "sensitive-information",
     title: "Sensitive information and what not to post",
     content: <>
-      <p>Private messages, account credentials handled by Clerk, precise report details, and some User Content may be considered sensitive under certain laws. Teich Forum is not designed to collect government identification numbers, financial account credentials, health records, precise location, biometric templates, or other regulated sensitive data.</p>
+      <p>Private Mail, account credentials handled by Clerk, precise report details, and some User Content may be considered sensitive under certain laws. Teich Forum is not designed to collect government identification numbers, financial account credentials, health records, precise location, biometric templates, or other regulated sensitive data.</p>
       <p>Please do not post secrets, private keys, passwords, verification codes, confidential datasets, government identifiers, payment-card data, medical records, or another person’s sensitive information. If you voluntarily place personal or sensitive information in a public profile or post, it becomes public and may be copied or used by others outside our control.</p>
     </>,
   },
@@ -57,7 +57,7 @@ const sections: LegalSection[] = [
       <p>We use personal information to:</p>
       <ul>
         <li>create, authenticate, secure, and maintain accounts and waitlist entries;</li>
-        <li>display profiles and community content and deliver threads, replies, votes, follows, bookmarks, messages, mentions, and notifications;</li>
+        <li>display profiles and community content and deliver threads, replies, votes, follows, bookmarks, Mail, mentions, and notifications;</li>
         <li>store and serve uploads, synchronize account changes, and provide settings and account-deletion controls;</li>
         <li>personalize basic forum state, such as whether content is saved, voted on, read, or available to your role;</li>
         <li>detect spam, fraud, abuse, attacks, policy evasion, and unauthorized access; enforce rate limits and access controls; and investigate security incidents;</li>
@@ -67,7 +67,7 @@ const sections: LegalSection[] = [
         <li>comply with law, respond to lawful requests, establish or defend legal claims, and enforce agreements; and</li>
         <li>create aggregated or de-identified information that cannot reasonably identify an individual, which we may use for legitimate purposes.</li>
       </ul>
-      <p>We do not use private messages or forum content to train general-purpose artificial-intelligence models. If that practice changes, we will update this Policy and provide any notice or choice required by law before the new use begins.</p>
+      <p>We do not use private Mail or forum content to train general-purpose artificial-intelligence models. If that practice changes, we will update this Policy and provide any notice or choice required by law before the new use begins.</p>
     </>,
   },
   {
@@ -76,7 +76,7 @@ const sections: LegalSection[] = [
     content: <>
       <p>If a law requires us to identify a legal basis, we rely on one or more of the following:</p>
       <ul>
-        <li><strong>Contract:</strong> processing needed to provide the Service you request and administer our <Link href="/terms">Terms of Service</Link>, such as maintaining an account or delivering a message.</li>
+        <li><strong>Contract:</strong> processing needed to provide the Service you request and administer our <Link href="/terms">Terms of Service</Link>, such as maintaining an account or delivering Mail.</li>
         <li><strong>Legitimate interests:</strong> operating and improving the community; securing systems; preventing abuse; moderating content; understanding performance; communicating with users; and protecting legal rights. We consider the impact on your rights before relying on this basis.</li>
         <li><strong>Consent:</strong> when you make an optional choice that legally requires consent, such as connecting an optional service or receiving a type of communication that requires opt-in. You may withdraw consent prospectively.</li>
         <li><strong>Legal obligation:</strong> complying with applicable law, lawful requests, recordkeeping duties, and valid legal process.</li>
@@ -90,7 +90,7 @@ const sections: LegalSection[] = [
     content: <>
       <p><strong>Public or community-visible information</strong> can include your username, display name, biography, avatar, role badge, join date, threads, replies, tags, edits, vote counts, follower relationships, and other visible community activity. Public pages can be indexed, cached, archived, quoted, or copied by users, search engines, and services outside Teich’s control.</p>
       <p><strong>Account-limited information</strong> includes bookmarks, blocks, account settings, email address, sessions, and authentication details. Access is limited to you, authorized staff, and service providers as necessary for their functions. Administrators may have broader access than moderators where needed for account administration.</p>
-      <p><strong>Direct messages</strong> are visible to conversation participants and are not end-to-end encrypted. Authorized staff may access a message when it is reported, reasonably needed for safety, abuse prevention, support, or system integrity, or required by law. Recipients can save or share messages, so do not treat them as a secure channel.</p>
+      <p><strong>Teich Mail</strong> is visible to the two thread participants and is not end-to-end encrypted. Staff BCC sends independent one-to-one threads; recipients do not see one another. Authorized staff may access limited context around a Mail entry when it is reported, reasonably needed for safety, abuse prevention, support, or system integrity, or required by law. Recipients can save or share Mail, so do not treat it as a secure channel.</p>
       <p><strong>Reports and moderation records</strong> are limited to authorized staff and relevant providers. A person affected by a report may receive enough information to understand and appeal an action, but we generally do not disclose a reporter’s identity unless necessary for fairness, safety, law, or with the reporter’s permission.</p>
     </>,
   },
@@ -136,7 +136,7 @@ const sections: LegalSection[] = [
     title: "Emails and notifications",
     content: <>
       <p>We or Clerk may send service communications such as verification codes, invitations, password or account notices, security alerts, moderation updates, and important policy or service changes. These transactional or relationship messages are part of providing and protecting the Service and may not have a marketing unsubscribe option.</p>
-      <p>In-product notifications may be generated by replies, mentions, votes, follows, messages, and moderation actions. You may mark notifications as read and can stop some interactions by blocking another member. If we introduce optional promotional email, we will provide any consent and unsubscribe controls required by law.</p>
+      <p>In-product notifications may be generated by replies, mentions, votes, follows, and moderation actions. Mail has a separate unread-thread count. You may mark notifications and Mail as read and can stop some interactions by blocking another member. If we introduce optional promotional email, we will provide any consent and unsubscribe controls required by law.</p>
     </>,
   },
   {
@@ -148,7 +148,7 @@ const sections: LegalSection[] = [
         <li><strong>Account data</strong> is generally retained while the account is active. When you delete your account, Clerk deletes or deactivates identity data according to its processes, and the forum marks the local account deleted and clears its stored email address.</li>
         <li><strong>Public profile and attribution data</strong> such as local user ID, username, display name, and avatar URL may remain after account deletion to preserve authorship, integrity, safety, and moderation history. The public member profile becomes unavailable, but previously published contributions may remain visible unless removed separately.</li>
         <li><strong>Threads and replies</strong> remain until you delete them, staff removes them, or they are no longer needed. Deleted or hidden content may remain available to authorized staff for moderation, appeals, safety, and audit purposes.</li>
-        <li><strong>Direct messages</strong> may remain for conversation participants and for safety, integrity, and legal purposes after account deletion. Deleting an account does not recall copies already delivered to another person.</li>
+        <li><strong>Teich Mail</strong> may remain for thread participants and for safety, integrity, and legal purposes after account deletion. Removing your mailbox copy does not recall the other participant’s copy.</li>
         <li><strong>Reports, staff notes, moderation actions, and security records</strong> may be retained after content or account deletion so we can document decisions, detect repeat abuse, resolve appeals, and protect the Service and community.</li>
         <li><strong>Uploads</strong> may remain while associated content or records are retained. Unused drafts and orphaned files may be deleted as part of maintenance, but you should not use draft storage as a permanent archive.</li>
         <li><strong>Rate-limit, request, and diagnostic records</strong> are kept for the duration needed to enforce limits, investigate failures or abuse, and secure infrastructure. Provider logs and backups expire according to operational schedules and may persist temporarily after deletion from live systems.</li>
@@ -188,7 +188,7 @@ const sections: LegalSection[] = [
         <li>appeal a refusal of a privacy request where applicable; and</li>
         <li>complain to your local privacy or data-protection authority.</li>
       </ul>
-      <p>You can update profile and account information, manage security methods, remove some content, and delete your account through the Service’s settings. For other requests, send a private forum message to a Teich administrator or moderator and begin the message with “Privacy Request.” Describe the request and the account involved, but do not send a password or verification code.</p>
+      <p>You can update profile and account information, manage security methods, remove some content, and delete your account through the Service’s settings. For other requests, send Teich Mail to an administrator or moderator with the subject “Privacy Request.” Describe the request and the account involved, but do not send a password or verification code.</p>
       <p>We may need to verify your identity or authority before acting. An authorized agent may submit a request where law permits, but we may request proof of authorization and direct identity confirmation. We will respond within the period required by applicable law. A right may be limited when information must be retained for security, legal compliance, free expression, the rights of others, or another lawful exception. We will not unlawfully discriminate against you for exercising a privacy right.</p>
     </>,
   },
@@ -205,10 +205,10 @@ const sections: LegalSection[] = [
             <tr><td>Customer-record information</td><td>Name, account and contact information</td><td>You and identity providers; account administration and support</td></tr>
             <tr><td>Internet or network activity</td><td>Sessions, requests, views, interactions, security and diagnostic events</td><td>Devices and providers; service delivery, measurement, debugging, safety</td></tr>
             <tr><td>General geolocation</td><td>Approximate region inferred from IP by infrastructure providers</td><td>Network requests; security, routing, and legal compliance</td></tr>
-            <tr><td>Audio, electronic, or visual information</td><td>Profile photos and uploaded images; messages and posts</td><td>You and other users; profiles, content, communication, moderation</td></tr>
-            <tr><td>Professional or educational information</td><td>Details you choose to place in a profile, post, or message</td><td>You and other users; community discussion and networking</td></tr>
+            <tr><td>Audio, electronic, or visual information</td><td>Profile photos and uploaded images; Mail and posts</td><td>You and other users; profiles, content, communication, moderation</td></tr>
+            <tr><td>Professional or educational information</td><td>Details you choose to place in a profile, post, or Mail entry</td><td>You and other users; community discussion and networking</td></tr>
             <tr><td>Inferences</td><td>Spam, abuse, trust, or moderation signals based on activity</td><td>Service activity; security, integrity, and policy enforcement</td></tr>
-            <tr><td>Sensitive information</td><td>Account credentials handled by Clerk, message contents, or report details where legally classified as sensitive</td><td>You, Clerk, and other users; authentication, communication, safety</td></tr>
+            <tr><td>Sensitive information</td><td>Account credentials handled by Clerk, Mail contents, or report details where legally classified as sensitive</td><td>You, Clerk, and other users; authentication, communication, safety</td></tr>
           </tbody>
         </table>
       </div>
@@ -221,7 +221,7 @@ const sections: LegalSection[] = [
     title: "Children’s privacy",
     content: <>
       <p>The Service is not directed to children under 13, and we do not knowingly collect personal information from them. People under 13 may not create an account or submit information to the Service. If local law requires a higher minimum age for a young person to consent independently, that person may use the Service only with legally valid parent or guardian involvement.</p>
-      <p>If you believe a child has provided personal information in violation of this section, contact a Teich administrator or moderator through a private forum message with enough information for us to identify the account or content. We will investigate and delete or otherwise handle the information as required by law.</p>
+      <p>If you believe a child has provided personal information in violation of this section, contact a Teich administrator or moderator through Teich Mail with enough information for us to identify the account or content. We will investigate and delete or otherwise handle the information as required by law.</p>
     </>,
   },
   {
@@ -237,7 +237,7 @@ const sections: LegalSection[] = [
     title: "Changes and contact",
     content: <>
       <p>We may update this Policy to reflect changes in the Service, providers, or law. We will change the “Last updated” date and, if changes are material, provide additional notice reasonably suited to the change, such as a prominent notice or account communication. Where required, we will request consent before applying a new practice to previously collected information.</p>
-      <p>For privacy questions, rights requests, or general legal questions, send a private forum message to a Teich administrator or moderator. Visit your <Link href="/messages">forum messages</Link> to continue an existing conversation. To start one, open a Teich staff member’s profile from one of their forum posts and choose <strong>Message</strong>. Begin a rights request with “Privacy Request,” and do not place sensitive personal information in a public post or report.</p>
+      <p>For privacy questions, rights requests, or general legal questions, send Teich Mail to an administrator or moderator. Visit your <Link href="/mail">Teich Mail</Link> to continue an existing thread. To start one, open a Teich staff member’s profile and choose <strong>Mail</strong>. Use the subject “Privacy Request,” and do not place sensitive personal information in a public post or report.</p>
       <p>If you are in the European Economic Area, United Kingdom, or Switzerland, you may also lodge a complaint with the data-protection authority where you live, work, or believe a violation occurred. We encourage you to contact us first so we have an opportunity to address the concern.</p>
     </>,
   },
@@ -253,7 +253,7 @@ export default function PrivacyPage() {
       updatedDate={EFFECTIVE_DATE}
       highlights={[
         "We do not sell personal information or use it for cross-context behavioral advertising.",
-        "Profiles and forum posts can be public; messages are limited-access but are not end-to-end encrypted.",
+        "Profiles and forum posts can be public; Teich Mail is limited-access but is not end-to-end encrypted.",
         "Clerk handles authentication, GitHub handles optional social sign-in, and UploadThing handles optional forum image uploads.",
         "Deleting an account clears the forum’s stored email, but contributions and safety records may remain for context and integrity.",
       ]}

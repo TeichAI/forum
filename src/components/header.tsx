@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { Bell, Bookmark, MessageCircle, Plus, Search, ShieldCheck } from "lucide-react";
+import { Bell, Bookmark, Mail, Plus, Search, ShieldCheck } from "lucide-react";
 import { AccountMenu } from "@/components/account-menu";
 import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
 import type { ClerkAccessMode } from "@/lib/access-mode";
 import type { ForumRole } from "@/lib/roles";
+import { getMailCounts } from "@/lib/mail";
 
 export type HeaderViewer = {
   id: string;
@@ -16,7 +17,10 @@ export type HeaderViewer = {
 };
 
 export async function Header({ viewer, accessMode = "public" }: { viewer: HeaderViewer | null; accessMode?: ClerkAccessMode }) {
-  const unread = viewer ? await db.notification.count({ where: { recipientId: viewer.id, readAt: null } }) : 0;
+  const [unread, mailCounts] = viewer ? await Promise.all([
+    db.notification.count({ where: { recipientId: viewer.id, readAt: null } }),
+    getMailCounts(viewer.id),
+  ]) : [0, null];
   const hasUnread = unread > 0;
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--background) 92%, transparent)" }}>
@@ -46,8 +50,9 @@ export async function Header({ viewer, accessMode = "public" }: { viewer: Header
               <Link href="/bookmarks" className="button button-ghost hidden !h-9 !w-9 !p-0 sm:inline-flex sm:!h-10 sm:!w-10" aria-label="Bookmarks" title="Bookmarks">
                 <Bookmark size={18} aria-hidden />
               </Link>
-              <Link href="/messages" className="button button-ghost !h-9 !w-9 !p-0 sm:!h-10 sm:!w-10" aria-label="Messages" title="Messages">
-                <MessageCircle size={18} aria-hidden />
+              <Link href="/mail" className="button button-ghost relative !h-9 !w-9 !p-0 sm:!h-10 sm:!w-10" aria-label={mailCounts?.unread ? `${mailCounts.unread} unread mail threads` : "Mail"} title={mailCounts?.unread ? `${mailCounts.unread} unread mail` : "Mail"}>
+                <Mail size={18} aria-hidden />
+                {Boolean(mailCounts?.unread) && <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-black text-white" style={{ background: "var(--brand-fill)" }} aria-hidden>{mailCounts!.unread > 99 ? "99+" : mailCounts!.unread}</span>}
               </Link>
               {(viewer.role === "MODERATOR" || viewer.role === "ADMIN") && (
                 <Link href="/staff" className="button button-ghost hidden !h-9 !w-9 !p-0 sm:inline-flex sm:!h-10 sm:!w-10" aria-label="Staff console" title="Staff console">

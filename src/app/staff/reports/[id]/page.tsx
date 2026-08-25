@@ -24,16 +24,17 @@ async function TargetPreview({ type, id }: { type: string; id: string }) {
     if (!item) return <p className="muted">The reported member no longer exists.</p>;
     return <div><Link href={`/staff/members/${item.id}`} className="text-xl font-black">{item.displayName}</Link><div className="mt-1 text-sm muted">@{item.username} · {item.role.toLowerCase()} · {item.status.toLowerCase()}</div><p className="mt-3 text-sm">{item.bio || "No profile bio."}</p></div>;
   }
-  if (type === "MESSAGE") {
-    const item = await db.message.findUnique({ where: { id }, include: { author: { select: { username: true } } } });
-    if (!item) return <p className="muted">The reported message no longer exists.</p>;
+  if (type === "MAIL_ENTRY") {
+    const item = await db.mailEntry.findUnique({ where: { id }, include: { author: { select: { username: true } } } });
+    if (!item) return <p className="muted">The reported mail entry no longer exists.</p>;
     const [before, after] = await Promise.all([
-      db.message.findMany({ where: { conversationId: item.conversationId, createdAt: { lt: item.createdAt } }, include: { author: { select: { username: true } } }, orderBy: { createdAt: "desc" }, take: 2 }),
-      db.message.findMany({ where: { conversationId: item.conversationId, createdAt: { gt: item.createdAt } }, include: { author: { select: { username: true } } }, orderBy: { createdAt: "asc" }, take: 2 }),
+      db.mailEntry.findMany({ where: { threadId: item.threadId, createdAt: { lt: item.createdAt } }, include: { author: { select: { username: true } } }, orderBy: { createdAt: "desc" }, take: 2 }),
+      db.mailEntry.findMany({ where: { threadId: item.threadId, createdAt: { gt: item.createdAt } }, include: { author: { select: { username: true } } }, orderBy: { createdAt: "asc" }, take: 2 }),
     ]);
     const context = [...before.reverse(), item, ...after];
-    return <div><p className="mb-3 text-xs muted">Private context is limited to two messages on either side.</p>{context.map((message) => <div key={message.id} className={message.id === item.id ? "rounded-xl border p-3" : "p-3 opacity-70"} style={message.id === item.id ? { borderColor: "var(--brand)" } : undefined}><strong className="text-xs">@{message.author.username}</strong><p className="mt-1 whitespace-pre-wrap text-sm">{message.body}</p></div>)}</div>;
+    return <div><p className="mb-3 text-xs muted">Private context is limited to two mail entries on either side.</p>{context.map((entry) => <div key={entry.id} className={entry.id === item.id ? "rounded-xl border p-3" : "p-3 opacity-70"} style={entry.id === item.id ? { borderColor: "var(--brand)" } : undefined}><strong className="text-xs">@{entry.author.username}</strong><div className="prose mt-1 text-sm"><Markdown>{entry.body}</Markdown></div></div>)}</div>;
   }
+  if (type === "LEGACY_MAIL") return <p className="muted">The original private content was removed during the Teich Mail migration. Reports, case notes, and audit actions were preserved.</p>;
   return <p className="muted">This target is not available for case review.</p>;
 }
 

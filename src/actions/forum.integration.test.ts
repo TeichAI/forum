@@ -12,8 +12,8 @@ vi.mock("next/navigation", () => ({ redirect: vi.fn((path: string) => { throw ne
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: vi.fn(() => false) }));
 
 import {
-  blockMember, createReply, createThread, moderateReport, reportContent, sendMessage,
-  setContentVisibility, startConversation, suspendMember, toggleBookmark, toggleFollow,
+  createReply, createThread, moderateReport, reportContent,
+  setContentVisibility, suspendMember, toggleBookmark, toggleFollow,
   toggleThreadLock, toggleThreadVote,
 } from "./forum";
 import { db } from "@/lib/db";
@@ -93,24 +93,6 @@ describe("forum actions against PostgreSQL", () => {
     expect(await db.bookmark.count({ where: { threadId: thread.id } })).toBe(1);
     expect(await db.follow.count({ where: { followingId: author.id } })).toBe(1);
     expect(await db.notification.count({ where: { recipientId: author.id } })).toBe(3);
-  });
-
-  it("persists messaging, visibility-scoped reports, and blocks future delivery", async () => {
-    const [one, two, outsider] = await Promise.all([createTestUser(), createTestUser(), createTestUser()]);
-    authState.user = one;
-    await expect(startConversation(form({ userId: two.id }))).rejects.toThrow("redirect:/messages/");
-    const conversation = await db.conversation.findFirstOrThrow();
-    await sendMessage(form({ conversationId: conversation.id, body: "Private hello" }));
-    const message = await db.message.findFirstOrThrow();
-    expect(await db.notification.count({ where: { recipientId: two.id, type: "MESSAGE" } })).toBe(1);
-
-    authState.user = outsider;
-    await expect(reportContent(form({ targetType: "MESSAGE", targetId: message.id, reason: "Spam" }))).rejects.toThrow("not visible");
-    authState.user = two;
-    await reportContent(form({ targetType: "MESSAGE", targetId: message.id, reason: "Spam" }));
-    expect(await db.report.count()).toBe(1);
-    await blockMember(form({ userId: one.id }));
-    await expect(sendMessage(form({ conversationId: conversation.id, body: "Blocked reply" }))).rejects.toThrow("unavailable");
   });
 
   it("applies moderation transactions and audit records", async () => {

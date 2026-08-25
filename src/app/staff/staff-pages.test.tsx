@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
     reply: { count: fn(), findMany: fn(), findUnique: fn() },
     user: { count: fn(), findMany: fn(), findUnique: fn() },
     category: { count: fn(), findMany: fn() }, tag: { count: fn(), findMany: fn() },
-    message: { findUnique: fn(), findMany: fn() }, settings: fn(),
+    mailEntry: { findUnique: fn(), findMany: fn() }, settings: fn(),
   };
 });
 
@@ -20,7 +20,7 @@ vi.mock("@/lib/auth", () => ({ requireModerator: mocks.requireModerator, require
 vi.mock("@/lib/db", () => ({ db: {
   moderationCase: mocks.moderationCase, moderationAction: mocks.moderationAction,
   thread: mocks.thread, reply: mocks.reply, user: mocks.user,
-  category: mocks.category, tag: mocks.tag, message: mocks.message,
+  category: mocks.category, tag: mocks.tag, mailEntry: mocks.mailEntry,
 } }));
 vi.mock("@/lib/moderation", () => ({ getModerationSettings: mocks.settings, canModerateRole: (actor: string, target: string) => target !== "ADMIN" && (actor === "ADMIN" || target === "MEMBER") }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
@@ -129,7 +129,7 @@ describe("staff console pages", () => {
     expect(screen.getByRole("button", { name: "Suspend member" })).toBeInTheDocument();
   });
 
-  it("renders reply, member, and limited private-message case targets plus closed decisions", async () => {
+  it("renders reply, member, and limited private-Mail case targets plus closed decisions", async () => {
     const baseCase = { id: "case", status: "RESOLVED", priority: "NORMAL", assignedToId: admin.id, assignedTo: admin, resolution: "Done", reports: [], notes: [], actions: [] };
     mocks.moderationCase.findUnique.mockResolvedValue({ ...baseCase, targetType: "REPLY", targetId: "reply" });
     mocks.reply.findUnique.mockResolvedValue({ id: "reply", body: "Reply body", status: "HIDDEN", author: member, thread: { slug: "topic", title: "Topic" } });
@@ -145,12 +145,12 @@ describe("staff console pages", () => {
     expect(screen.getByRole("heading", { name: "Member action" })).toBeInTheDocument();
     view.unmount();
 
-    mocks.moderationCase.findUnique.mockResolvedValue({ ...baseCase, targetType: "MESSAGE", targetId: "message", status: "OPEN" });
-    mocks.message.findUnique.mockResolvedValue({ id: "message", conversationId: "conversation", body: "Reported private message", createdAt: now, author: { username: "pond_member" } });
-    mocks.message.findMany.mockResolvedValueOnce([{ id: "before", body: "Before", createdAt: new Date(now.getTime() - 1), author: { username: "other" } }]).mockResolvedValueOnce([{ id: "after", body: "After", createdAt: new Date(now.getTime() + 1), author: { username: "other" } }]);
+    mocks.moderationCase.findUnique.mockResolvedValue({ ...baseCase, targetType: "MAIL_ENTRY", targetId: "message", status: "OPEN" });
+    mocks.mailEntry.findUnique.mockResolvedValue({ id: "message", threadId: "thread", body: "Reported private Mail", createdAt: now, author: { username: "pond_member" } });
+    mocks.mailEntry.findMany.mockResolvedValueOnce([{ id: "before", body: "Before", createdAt: new Date(now.getTime() - 1), author: { username: "other" } }]).mockResolvedValueOnce([{ id: "after", body: "After", createdAt: new Date(now.getTime() + 1), author: { username: "other" } }]);
     render(await ReportCasePage({ params: Promise.resolve({ id: "case" }) }));
-    expect(screen.getByText("Reported private message")).toBeInTheDocument();
-    expect(screen.getByText(/limited to two messages/)).toBeInTheDocument();
+    expect(screen.getByText("Reported private Mail")).toBeInTheDocument();
+    expect(screen.getByText(/limited to two mail entries/)).toBeInTheDocument();
   });
 
   it("renders empty list states and deleted content without moderation controls", async () => {
