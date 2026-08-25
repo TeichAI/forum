@@ -11,6 +11,7 @@
 
 # User functionality
 
+- Login with HuggingFace
 
 # Admin Controls
 - [FE] Add a dropdown to the lock button that allows the admin to lock with a custom reason, or lock without a notification.
