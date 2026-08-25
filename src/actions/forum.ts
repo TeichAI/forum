@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getVerifiedUserRole, requireModerator, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { canComment, canStartDiscussion } from "@/lib/space-posting-permissions";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils";
 
@@ -38,8 +39,11 @@ export async function createThread(formData: FormData) {
   const rawTags = z.string().max(180).catch("").parse(formData.get("tags") ?? "");
   const tags = [...new Set(rawTags.split(",").map((tag) => slugify(tag.trim())).filter(Boolean))].slice(0, 5);
 
-  const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+  const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true, postingPolicy: true } });
   if (!category) throw new Error("Category not found");
+  if (!canStartDiscussion(user.role, category.postingPolicy)) {
+    throw new Error("You do not have permission to start a discussion in this space");
+  }
 
   const thread = await db.thread.create({
     data: {
@@ -64,9 +68,22 @@ export async function createReply(formData: FormData) {
   const user = await requireUser();
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const body = bodySchema.parse(formData.get("body"));
-  const thread = await db.thread.findUnique({ where: { id: threadId }, select: { id: true, slug: true, authorId: true, isLocked: true, status: true } });
+  const thread = await db.thread.findUnique({
+    where: { id: threadId },
+    select: {
+      id: true,
+      slug: true,
+      authorId: true,
+      isLocked: true,
+      status: true,
+      category: { select: { postingPolicy: true } },
+    },
+  });
   if (!thread || thread.status !== "PUBLISHED") throw new Error("Thread not found");
   if (thread.isLocked) throw new Error("This thread is locked");
+  if (!canComment(user.role, thread.category.postingPolicy)) {
+    throw new Error("You do not have permission to comment in this space");
+  }
 
   const reply = await db.$transaction(async (tx) => {
     const created = await tx.reply.create({ data: { body, threadId, authorId: user.id } });

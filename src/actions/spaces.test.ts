@@ -5,16 +5,17 @@ const mocks = vi.hoisted(() => ({
   findMany: vi.fn(),
   aggregate: vi.fn(),
   create: vi.fn(),
+  updateMany: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: mocks.requireAdmin }));
-vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.findMany, aggregate: mocks.aggregate, create: mocks.create } } }));
+vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.findMany, aggregate: mocks.aggregate, create: mocks.create, updateMany: mocks.updateMany } } }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
-import { createSpace, type SpaceActionState } from "./spaces";
+import { createSpace, type SpaceActionState, updateSpacePostingPolicy } from "./spaces";
 
 const initialState: SpaceActionState = { status: "idle" };
 
@@ -30,6 +31,7 @@ beforeEach(() => {
   mocks.findMany.mockResolvedValue([]);
   mocks.aggregate.mockResolvedValue({ _max: { position: null } });
   mocks.create.mockResolvedValue({ id: "space" });
+  mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
 });
 
@@ -44,7 +46,7 @@ describe("space creation", () => {
 
     expect(mocks.requireAdmin).toHaveBeenCalledOnce();
     expect(mocks.create).toHaveBeenCalledWith({ data: {
-      name: "Product Ideas", description: "Discuss future products.", color: "#a1b2c3", slug: "product-ideas-2", position: 5,
+      name: "Product Ideas", description: "Discuss future products.", color: "#a1b2c3", postingPolicy: "OPEN", slug: "product-ideas-2", position: 5,
     } });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/");
   });
@@ -52,6 +54,15 @@ describe("space creation", () => {
   it("uses safe defaults for an empty generated slug and first position", async () => {
     await expect(createSpace(initialState, form({ name: "池塘", description: "社区讨论", color: "#0f766e" }))).rejects.toThrow("redirect:/c/space");
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ slug: "space", position: 0 }) }));
+  });
+
+  it("persists a validated posting policy", async () => {
+    await expect(createSpace(initialState, form({
+      name: "News", description: "Official news", color: "#123456", postingPolicy: "ANNOUNCEMENTS",
+    }))).rejects.toThrow("redirect:/c/news");
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ postingPolicy: "ANNOUNCEMENTS" }),
+    }));
   });
 
   it("returns field errors without querying for invalid input", async () => {
@@ -84,5 +95,44 @@ describe("space creation", () => {
       status: "error", message: "We couldn’t create the space. Please try again.",
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("posting policy updates", () => {
+  it("authorizes, updates an existing space, and revalidates the root layout", async () => {
+    const result = await updateSpacePostingPolicy(
+      { status: "idle" },
+      form({ categoryId: "cm000000000000000000000004", postingPolicy: "ADMIN_ONLY" }),
+    );
+
+    expect(result).toEqual({ status: "success", message: "Posting permissions saved." });
+    expect(mocks.requireAdmin).toHaveBeenCalledOnce();
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id: "cm000000000000000000000004" },
+      data: { postingPolicy: "ADMIN_ONLY" },
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/", "layout");
+  });
+
+  it("returns validation errors without writing", async () => {
+    const result = await updateSpacePostingPolicy(
+      { status: "idle" },
+      form({ categoryId: "not-an-id", postingPolicy: "MEMBERS_ONLY" }),
+    );
+    expect(result).toEqual(expect.objectContaining({
+      status: "error",
+      fieldErrors: { categoryId: expect.any(String), postingPolicy: expect.any(String) },
+    }));
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing space without revalidating", async () => {
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    const result = await updateSpacePostingPolicy(
+      { status: "idle" },
+      form({ categoryId: "cm000000000000000000000004", postingPolicy: "OPEN" }),
+    );
+    expect(result).toEqual({ status: "error", message: "That space no longer exists." });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 });

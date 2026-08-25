@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   category: vi.fn(), tag: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(),
-  requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
+  viewer: vi.fn(), requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   category: { findUnique: mocks.category },
   tag: { findUnique: mocks.tag }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
 } }));
-vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
+vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/components/account/account-security", () => ({ AccountSecurity: () => <section>Custom identity settings</section> }));
 vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, searchThreads: mocks.searchThreads, threadListInclude: {} }));
@@ -27,12 +27,13 @@ import TagPage from "./tag/[slug]/page";
 import NotFound from "./not-found";
 
 const user = { id: "user", displayName: "Owen", username: "owen", bio: "Pond builder" };
-const category = { id: "category", slug: "general", name: "General", description: "Community talk", color: "#123456" };
+const category = { id: "category", slug: "general", name: "General", description: "Community talk", color: "#123456", postingPolicy: "OPEN" };
 const thread = { id: "thread", title: "A discussion" };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(user);
+  mocks.viewer.mockResolvedValue(null);
   mocks.listThreads.mockResolvedValue([]);
   mocks.searchThreads.mockResolvedValue([]);
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
@@ -57,6 +58,22 @@ describe("category, tag, and search pages", () => {
     mocks.category.mockResolvedValue(null);
     await expect(categoryMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Space", description: undefined });
     await expect(CategoryPage({ params: Promise.resolve({ slug: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("labels restricted spaces and replaces the member trigger with policy guidance", async () => {
+    mocks.viewer.mockResolvedValue({ ...user, role: "MODERATOR" });
+    mocks.category.mockResolvedValue({ ...category, postingPolicy: "ANNOUNCEMENTS" });
+
+    const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
+    expect(screen.getByText("Announcements")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New thread" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Only admins can start discussions here/)).toBeInTheDocument();
+
+    mocks.viewer.mockResolvedValue({ ...user, role: "ADMIN" });
+    mocks.category.mockResolvedValue({ ...category, postingPolicy: "ADMIN_ONLY" });
+    rerender(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
+    expect(screen.getByText("Admin only")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New thread" })).toBeInTheDocument();
   });
 
   it("renders a tag result and rejects missing tags", async () => {

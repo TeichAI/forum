@@ -28,6 +28,48 @@ function form(values: Record<string, string>) {
 beforeEach(() => { authState.user = null; authState.moderator = null; });
 
 describe("forum actions against PostgreSQL", () => {
+  it("applies current space policies to existing threads and treats moderators like members", async () => {
+    const [member, moderator, admin] = await Promise.all([
+      createTestUser({ role: "MEMBER" }),
+      createTestUser({ role: "MODERATOR" }),
+      createTestUser({ role: "ADMIN" }),
+    ]);
+    const category = await createTestCategory({ postingPolicy: "OPEN" });
+    const existingThread = await createTestThread(member.id, category.id);
+
+    authState.user = member;
+    await createReply(form({ threadId: existingThread.id, body: "Open member reply" }));
+
+    await db.category.update({ where: { id: category.id }, data: { postingPolicy: "ANNOUNCEMENTS" } });
+    await expect(createThread(form({
+      title: "Member announcement attempt",
+      body: "Members cannot start announcements",
+      categoryId: category.id,
+    }))).rejects.toThrow("permission");
+    await createReply(form({ threadId: existingThread.id, body: "Announcements still accept member replies" }));
+
+    authState.user = moderator;
+    await expect(createThread(form({
+      title: "Moderator announcement attempt",
+      body: "Moderators follow member posting rules",
+      categoryId: category.id,
+    }))).rejects.toThrow("permission");
+    await createReply(form({ threadId: existingThread.id, body: "Moderator reply to announcement" }));
+
+    await db.category.update({ where: { id: category.id }, data: { postingPolicy: "ADMIN_ONLY" } });
+    await expect(createReply(form({ threadId: existingThread.id, body: "Now denied immediately" }))).rejects.toThrow("permission");
+
+    authState.user = admin;
+    await expect(createThread(form({
+      title: "Administrator only discussion",
+      body: "Admins retain access",
+      categoryId: category.id,
+    }))).rejects.toThrow("redirect:/t/");
+    await createReply(form({ threadId: existingThread.id, body: "Admin reply" }));
+
+    await db.thread.update({ where: { id: existingThread.id }, data: { isLocked: true } });
+    await expect(createReply(form({ threadId: existingThread.id, body: "Lock remains absolute" }))).rejects.toThrow("locked");
+  });
   it("persists a thread, normalized tags, reply, mentions, votes, bookmark, and follow", async () => {
     const [author, participant, mentioned] = await Promise.all([
       createTestUser({ username: "author" }), createTestUser({ username: "participant" }), createTestUser({ username: "mentioned" }),

@@ -35,7 +35,7 @@ const other = { id: "other", username: "other", displayName: "Other", imageUrl: 
 const admin = { ...member, id: "admin", username: "admin", displayName: "Admin", role: "ADMIN" };
 const thread = {
   id: "thread", slug: "topic", title: "A full discussion", body: "Thread body", status: "PUBLISHED", authorId: member.id,
-  author: member, category: { id: "category", slug: "general", name: "General", color: "#123456" }, tags: [{ tag: { id: "tag", slug: "testing", name: "Testing" } }],
+  author: member, category: { id: "category", slug: "general", name: "General", color: "#123456", postingPolicy: "OPEN" }, tags: [{ tag: { id: "tag", slug: "testing", name: "Testing" } }],
   votes: [], bookmarks: [], _count: { votes: 2, replies: 1 }, isLocked: false, createdAt: now, editedAt: null,
   replies: [{ id: "reply", body: "Reply body", authorId: other.id, author: { ...other, role: "MODERATOR" }, votes: [], _count: { votes: 1 }, createdAt: now, editedAt: now }],
 };
@@ -84,6 +84,46 @@ describe("discussion page", () => {
     expect(screen.getByText("This discussion is locked.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unlock" })).toBeInTheDocument();
     expect(screen.getByText("Edit reply")).toBeInTheDocument();
+  });
+
+  it("replaces replies with an admin-only notice while keeping thread locks absolute", async () => {
+    mocks.viewer.mockResolvedValue({ ...member, role: "MODERATOR" });
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      category: { ...thread.category, postingPolicy: "ADMIN_ONLY" },
+    });
+    const { rerender } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(screen.getByText("Admin only")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Replies are limited to admins" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post reply" })).not.toBeInTheDocument();
+
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      isLocked: true,
+      category: { ...thread.category, postingPolicy: "ADMIN_ONLY" },
+    });
+    rerender(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(screen.getByText("This discussion is locked.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Replies are limited to admins" })).not.toBeInTheDocument();
+  });
+
+  it("allows members to reply to announcements and admins to reply everywhere", async () => {
+    mocks.viewer.mockResolvedValue(member);
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      category: { ...thread.category, postingPolicy: "ANNOUNCEMENTS" },
+    });
+    const { rerender } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(screen.getByText("Announcements")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Post reply" })).toBeInTheDocument();
+
+    mocks.viewer.mockResolvedValue(admin);
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      category: { ...thread.category, postingPolicy: "ADMIN_ONLY" },
+    });
+    rerender(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(screen.getByRole("button", { name: "Post reply" })).toBeInTheDocument();
   });
 
   it("returns not found for missing content and hidden content viewed by members", async () => {

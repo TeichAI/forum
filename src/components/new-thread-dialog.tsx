@@ -1,16 +1,20 @@
 "use client";
 
-import { createContext, useCallback, useEffect, useId, useRef, useState } from "react";
+import type { SpacePostingPolicy } from "@prisma/client";
+import { createContext, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { createThread } from "@/actions/forum";
 import { MarkdownEditorClient } from "@/components/markdown-editor-client";
 import { SubmitButton } from "@/components/ui/submit-button";
+import type { ForumRole } from "@/lib/roles";
+import { canStartDiscussion } from "@/lib/space-posting-permissions";
 
 type CategoryOption = {
   id: string;
   name: string;
+  postingPolicy: SpacePostingPolicy;
 };
 
 type NewThreadDialogContextValue = {
@@ -23,11 +27,13 @@ export const NewThreadDialogContext = createContext<NewThreadDialogContextValue 
 export function NewThreadDialogProvider({
   children,
   isAuthenticated,
+  viewerRole,
   categories,
   uploadsEnabled,
 }: {
   children: React.ReactNode;
   isAuthenticated: boolean;
+  viewerRole: ForumRole | null;
   categories: CategoryOption[];
   uploadsEnabled: boolean;
 }) {
@@ -41,6 +47,12 @@ export function NewThreadDialogProvider({
   const descriptionId = useId();
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [draftKey, setDraftKey] = useState(0);
+  const selectableCategories = useMemo(
+    () => isAuthenticated
+      ? categories.filter((category) => canStartDiscussion(viewerRole, category.postingPolicy))
+      : categories,
+    [categories, isAuthenticated, viewerRole],
+  );
 
   const resetDraft = useCallback(() => {
     formRef.current?.reset();
@@ -58,19 +70,24 @@ export function NewThreadDialogProvider({
       return;
     }
 
-    const nextCategoryId = categoryId && categories.some((category) => category.id === categoryId) ? categoryId : "";
+    const nextCategoryId = categoryId && selectableCategories.some((category) => category.id === categoryId) ? categoryId : "";
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     flushSync(() => setSelectedCategoryId(nextCategoryId));
     dialogRef.current?.showModal();
     titleRef.current?.focus();
-  }, [categories, isAuthenticated, router]);
+  }, [isAuthenticated, router, selectableCategories]);
 
   useEffect(() => {
     closeDialog();
   }, [closeDialog, pathname]);
 
   return (
-    <NewThreadDialogContext.Provider value={{ openNewThread, hasSpaces: categories.length > 0 }}>
+    <NewThreadDialogContext.Provider
+      value={{
+        openNewThread,
+        hasSpaces: isAuthenticated ? selectableCategories.length > 0 : categories.length > 0,
+      }}
+    >
       {children}
       {isAuthenticated ? (
         <dialog
@@ -131,7 +148,7 @@ export function NewThreadDialogProvider({
                     required
                   >
                     <option value="">Choose a space</option>
-                    {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    {selectableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                   </select>
                 </div>
                 <div>

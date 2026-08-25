@@ -1,5 +1,6 @@
 "use server";
 
+import { SpacePostingPolicy } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -11,12 +12,19 @@ const spaceSchema = z.object({
   name: z.string().trim().min(2, "Enter at least 2 characters.").max(60, "Names must be 60 characters or fewer."),
   description: z.string().trim().min(2, "Enter at least 2 characters.").max(280, "Descriptions must be 280 characters or fewer."),
   color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, "Choose a valid color."),
+  postingPolicy: z.nativeEnum(SpacePostingPolicy).default(SpacePostingPolicy.OPEN),
 });
 
 export type SpaceActionState = {
   status: "idle" | "error";
   message?: string;
-  fieldErrors?: Partial<Record<"name" | "description" | "color", string>>;
+  fieldErrors?: Partial<Record<"name" | "description" | "color" | "postingPolicy", string>>;
+};
+
+export type SpacePolicyActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  fieldErrors?: Partial<Record<"categoryId" | "postingPolicy", string>>;
 };
 
 function availableSlug(name: string, occupied: Set<string>) {
@@ -34,6 +42,7 @@ export async function createSpace(_state: SpaceActionState, formData: FormData):
     name: formData.get("name"),
     description: formData.get("description"),
     color: formData.get("color"),
+    postingPolicy: formData.get("postingPolicy") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -45,6 +54,7 @@ export async function createSpace(_state: SpaceActionState, formData: FormData):
         name: errors.name?.[0],
         description: errors.description?.[0],
         color: errors.color?.[0],
+        postingPolicy: errors.postingPolicy?.[0],
       },
     };
   }
@@ -74,6 +84,7 @@ export async function createSpace(_state: SpaceActionState, formData: FormData):
         name: parsed.data.name,
         description: parsed.data.description,
         color: parsed.data.color.toLowerCase(),
+        postingPolicy: parsed.data.postingPolicy,
         slug,
         position: (lastPosition._max.position ?? -1) + 1,
       },
@@ -87,4 +98,43 @@ export async function createSpace(_state: SpaceActionState, formData: FormData):
 
   revalidatePath("/");
   redirect(`/c/${slug}`);
+}
+
+const spacePolicySchema = z.object({
+  categoryId: z.string().cuid("Choose a valid space."),
+  postingPolicy: z.nativeEnum(SpacePostingPolicy, { error: "Choose a valid posting policy." }),
+});
+
+export async function updateSpacePostingPolicy(
+  _state: SpacePolicyActionState,
+  formData: FormData,
+): Promise<SpacePolicyActionState> {
+  await requireAdmin();
+  const parsed = spacePolicySchema.safeParse({
+    categoryId: formData.get("categoryId"),
+    postingPolicy: formData.get("postingPolicy"),
+  });
+
+  if (!parsed.success) {
+    const errors = parsed.error.flatten().fieldErrors;
+    return {
+      status: "error",
+      message: "Choose a valid space and posting policy.",
+      fieldErrors: {
+        categoryId: errors.categoryId?.[0],
+        postingPolicy: errors.postingPolicy?.[0],
+      },
+    };
+  }
+
+  const result = await db.category.updateMany({
+    where: { id: parsed.data.categoryId },
+    data: { postingPolicy: parsed.data.postingPolicy },
+  });
+  if (result.count === 0) {
+    return { status: "error", message: "That space no longer exists." };
+  }
+
+  revalidatePath("/", "layout");
+  return { status: "success", message: "Posting permissions saved." };
 }

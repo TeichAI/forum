@@ -7,6 +7,8 @@ test.describe.configure({ mode: "serial" });
 const baseUrl = `http://localhost:${process.env.E2E_PORT ?? "3100"}`;
 const secret = process.env.E2E_AUTH_SECRET!;
 let createdThreadUrl = "";
+let announcementThreadUrl = "";
+let adminOnlyThreadUrl = "";
 
 function sessionToken(userId: string) {
   const payload = Buffer.from(JSON.stringify({ userId, expiresAt: Date.now() + 30 * 60_000 })).toString("base64url");
@@ -123,11 +125,53 @@ test("an administrator reviews, hides, resolves, and locks reported content", as
   await page.goto("/");
   await page.getByRole("button", { name: "Add space" }).click();
   await expect(page.getByRole("dialog", { name: "Create a space" })).toBeVisible();
-  await page.getByLabel("Name").fill("Product Ideas");
-  await page.getByLabel("Description").fill("Discuss and refine future product ideas.");
+  await page.getByLabel("Name").fill("Community News");
+  await page.getByLabel("Description").fill("Announcements members can discuss.");
   await page.getByLabel("Color").fill("#336699");
+  await page.getByRole("radio", { name: /Announcements/ }).check();
   await page.getByRole("button", { name: "Create space", exact: true }).click();
-  await expect(page).toHaveURL(/\/c\/product-ideas$/);
-  await expect(page.getByRole("heading", { name: "Product Ideas" })).toBeVisible();
-  await expect(page.getByText("No discussions here yet.")).toBeVisible();
+  await expect(page).toHaveURL(/\/c\/community-news$/);
+  await page.getByRole("main").getByRole("button", { name: "New thread" }).click();
+  await page.getByLabel("Title").fill("A community announcement");
+  await page.getByRole("dialog").locator('textarea[name="body"]').fill("An update that members can discuss.");
+  await page.getByRole("button", { name: "Publish discussion" }).click();
+  await expect(page).toHaveURL(/\/t\/a-community-announcement-/);
+  announcementThreadUrl = page.url();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add space" }).click();
+  await page.getByLabel("Name").fill("Staff Notices");
+  await page.getByLabel("Description").fill("Read-only notices from administrators.");
+  await page.getByLabel("Color").fill("#663399");
+  await page.getByRole("radio", { name: /Admin only/ }).check();
+  await page.getByRole("button", { name: "Create space", exact: true }).click();
+  await expect(page).toHaveURL(/\/c\/staff-notices$/);
+  await page.getByRole("main").getByRole("button", { name: "New thread" }).click();
+  await page.getByLabel("Title").fill("An administrator notice");
+  await page.getByRole("dialog").locator('textarea[name="body"]').fill("Only administrators can reply here.");
+  await page.getByRole("button", { name: "Publish discussion" }).click();
+  await expect(page).toHaveURL(/\/t\/an-administrator-notice-/);
+  adminOnlyThreadUrl = page.url();
+});
+
+test("space policies deny member posting while announcements still accept replies", async ({ context, page }) => {
+  await useIdentity(context, featureIds.member);
+
+  await page.goto("/c/staff-notices");
+  await expect(page.getByText("Only admins can start discussions or reply here.")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "New thread" })).toHaveCount(0);
+
+  await page.goto(adminOnlyThreadUrl);
+  await expect(page.getByRole("heading", { name: "Replies are limited to admins" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Post reply" })).toHaveCount(0);
+
+  await page.goto(announcementThreadUrl);
+  await page.getByPlaceholder("Write a thoughtful reply…").fill("Members can discuss announcements.");
+  await page.getByRole("button", { name: "Post reply" }).click();
+  await expect(page.getByText("Members can discuss announcements.")).toBeVisible();
+
+  await page.getByRole("button", { name: "New thread" }).click();
+  const spaceOptions = page.getByLabel("Space").locator("option");
+  await expect(spaceOptions.filter({ hasText: "Community News" })).toHaveCount(0);
+  await expect(spaceOptions.filter({ hasText: "Staff Notices" })).toHaveCount(0);
 });

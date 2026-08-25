@@ -41,6 +41,8 @@ describe("CreateSpaceDialog", () => {
     expect(screen.getByRole("dialog", { name: "Create a space" })).toHaveAttribute("open");
     await waitFor(() => expect(screen.getByLabelText("Name")).toHaveFocus());
     await user.type(screen.getByLabelText("Name"), "Draft space");
+    expect(screen.getByRole("radio", { name: /Open/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Announcements/ })).not.toBeChecked();
     expect(await axe(container)).toHaveNoViolations();
 
     await user.click(screen.getByRole("button", { name: "Close create space dialog" }));
@@ -48,6 +50,7 @@ describe("CreateSpaceDialog", () => {
     await user.click(trigger);
     expect(screen.getByLabelText("Name")).toHaveValue("");
     expect(screen.getByLabelText("Color")).toHaveValue("#0f766e");
+    expect(screen.getByRole("radio", { name: /Open/ })).toBeChecked();
   });
 
   it("announces returned field errors and marks their controls", async () => {
@@ -82,5 +85,19 @@ describe("CreateSpaceDialog", () => {
     expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
     await act(async () => finish({ status: "idle" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Create space" })).toBeEnabled());
+  });
+
+  it("submits the selected posting policy", async () => {
+    const user = userEvent.setup();
+    render(<CreateSpaceDialog />);
+    await user.click(screen.getByRole("button", { name: "Add space" }));
+    await user.type(screen.getByLabelText("Name"), "News");
+    await user.type(screen.getByLabelText("Description"), "Official updates");
+    await user.click(screen.getByRole("radio", { name: /Announcements/ }));
+    await user.click(screen.getByRole("button", { name: "Create space" }));
+
+    await waitFor(() => expect(mocks.createSpace).toHaveBeenCalled());
+    const submitted = mocks.createSpace.mock.calls[0]?.[1] as FormData;
+    expect(submitted.get("postingPolicy")).toBe("ANNOUNCEMENTS");
   });
 });

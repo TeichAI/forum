@@ -13,13 +13,14 @@ vi.mock("@/components/forum/create-space-dialog", () => ({ CreateSpaceDialog: ()
 
 const category = {
   id: "category", name: "General", slug: "general", description: "Talk", color: "#123456", icon: "hash", position: 1,
-  createdAt: new Date(), updatedAt: new Date(), _count: { threads: 7 },
+  postingPolicy: "OPEN" as const, createdAt: new Date(), updatedAt: new Date(), _count: { threads: 7 },
 };
 const thread = {
   id: "thread", slug: "hello", title: "Pinned hello", body: "A **useful** body", status: "PUBLISHED", isPinned: true,
   isLocked: false, viewCount: 0, authorId: "author", categoryId: "category", createdAt: new Date(), updatedAt: new Date(), editedAt: null,
   bumpedAt: new Date(), deletedAt: null,
-  author: { id: "author", username: "author", displayName: "Author", imageUrl: null, role: "ADMIN" }, category,
+  author: { id: "author", username: "author", displayName: "Author", imageUrl: null, role: "ADMIN" },
+  category: { ...category, postingPolicy: "ANNOUNCEMENTS" as const },
   tags: [{ threadId: "thread", tagId: "tag", tag: { id: "tag", name: "Testing", slug: "testing", createdAt: new Date() } }],
   _count: { replies: 2, votes: 3, bookmarks: 4 },
 };
@@ -31,6 +32,9 @@ describe("forum display components", () => {
     expect(await axe(container)).toHaveNoViolations();
     rerender(<CategoryList categories={[{ ...category, _count: undefined }]} />);
     expect(screen.queryByText("7")).not.toBeInTheDocument();
+
+    rerender(<CategoryList categories={[{ ...category, postingPolicy: "ADMIN_ONLY" } as never]} />);
+    expect(screen.getByText("Admin only")).toHaveAttribute("title", "Only admins can start discussions or comment.");
   });
 
   it("renders an empty state and exposes creation only to administrators", () => {
@@ -48,6 +52,7 @@ describe("forum display components", () => {
     expect(screen.getByRole("link", { name: /Pinned hello/ })).toHaveAttribute("href", "/t/hello");
     expect(screen.getByRole("link", { name: "#Testing" })).toHaveAttribute("href", "/tag/testing");
     expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
+    expect(screen.getByText("Announcements")).toHaveAttribute("title", "Only admins can start discussions; everyone can comment.");
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 

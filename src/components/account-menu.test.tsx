@@ -82,13 +82,26 @@ describe("AccountMenu", () => {
     expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
     expect(screen.getByText("@owen")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "Space settings" })).toHaveAttribute("href", "/settings/spaces");
     expect(screen.queryByText("Account & security")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
 
     await user.tab();
     expect(screen.getByRole("link", { name: "Account settings" })).toHaveFocus();
     await user.tab();
+    expect(screen.getByRole("link", { name: "Space settings" })).toHaveFocus();
+    await user.tab();
     expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+  });
+
+  it("hides space settings from non-admin roles", async () => {
+    const user = userEvent.setup();
+    render(<AccountMenu {...viewer} role="MODERATOR" />);
+
+    await user.click(screen.getByRole("button", { name: "Account menu for Owen Example" }));
+
+    expect(screen.queryByRole("link", { name: "Space settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Account settings" })).toBeInTheDocument();
   });
 
   it("dismisses the dropdown when account settings is selected", async () => {

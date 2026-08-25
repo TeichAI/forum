@@ -84,7 +84,7 @@ beforeEach(() => {
 describe("discussion actions", () => {
   it("creates a normalized tagged thread, claims referenced uploads, notifies mentions, and redirects", async () => {
     mocks.uploadsEnabled.mockReturnValue(true);
-    mocks.db.category.findUnique.mockResolvedValue({ id: ids.category });
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.category, postingPolicy: "OPEN" });
     mocks.db.thread.create.mockResolvedValue({ id: ids.thread, slug: "a-useful-thread-abc123" });
     mocks.db.attachment.findMany.mockResolvedValue([
       { id: "attachment-1", url: "https://utfs.io/f/used" },
@@ -116,7 +116,7 @@ describe("discussion actions", () => {
   });
 
   it("creates a reply transaction, bumps the thread, notifies its author, and revalidates", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED" });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     mocks.db.thread.update.mockResolvedValue({});
     mocks.db.notification.create.mockResolvedValue({});
@@ -134,10 +134,44 @@ describe("discussion actions", () => {
   });
 
   it("does not notify an author replying to their own thread", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.user, isLocked: false, status: "PUBLISHED" });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.user, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     await createReply(form({ threadId: ids.thread, body: "Self reply" }));
     expect(mocks.db.notification.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["ANNOUNCEMENTS", "ADMIN_ONLY"] as const)("denies members and moderators from starting discussions under %s", async (postingPolicy) => {
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.category, postingPolicy });
+    for (const role of ["MEMBER", "MODERATOR"] as const) {
+      mocks.requireUser.mockResolvedValueOnce({ ...member, role });
+      await expect(createThread(form({ title: "A valid title", body: "Body", categoryId: ids.category }))).rejects.toThrow("permission");
+    }
+    expect(mocks.db.thread.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["OPEN", "ANNOUNCEMENTS", "ADMIN_ONLY"] as const)("allows administrators to start discussions under %s", async (postingPolicy) => {
+    mocks.requireUser.mockResolvedValue({ ...member, role: "ADMIN" });
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.category, postingPolicy });
+    mocks.db.thread.create.mockResolvedValue({ id: ids.thread, slug: "admin-topic" });
+    await expect(createThread(form({ title: "An admin title", body: "Body", categoryId: ids.category }))).rejects.toThrow("redirect:/t/admin-topic");
+  });
+
+  it("allows member comments in announcements and denies them in admin-only spaces", async () => {
+    mocks.db.thread.findUnique
+      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ANNOUNCEMENTS" } })
+      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ADMIN_ONLY" } });
+    mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
+
+    await createReply(form({ threadId: ids.thread, body: "Allowed reply" }));
+    await expect(createReply(form({ threadId: ids.thread, body: "Denied reply" }))).rejects.toThrow("permission");
+    expect(mocks.db.reply.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps thread locks absolute for administrators", async () => {
+    mocks.requireUser.mockResolvedValue({ ...member, role: "ADMIN" });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: true, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
+    await expect(createReply(form({ threadId: ids.thread, body: "Admin reply" }))).rejects.toThrow("locked");
+    expect(mocks.db.reply.create).not.toHaveBeenCalled();
   });
 
   it.each([

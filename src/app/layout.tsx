@@ -17,7 +17,10 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const accessMode = getClerkAccessMode();
   const viewer = await getViewer();
-  const categories = await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } });
+  const categories = await db.category.findMany({
+    orderBy: { position: "asc" },
+    select: { id: true, name: true, postingPolicy: true },
+  });
   const headerViewer = viewer ? {
     id: viewer.id,
     displayName: viewer.displayName,
@@ -26,7 +29,20 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     role: viewer.role,
   } : null;
   const content = (
-    <html lang="en"><body><NewThreadDialogProvider isAuthenticated={Boolean(viewer)} categories={categories} uploadsEnabled={Boolean(viewer) && uploadsEnabled()}><Header viewer={headerViewer} accessMode={accessMode} /><main>{children}</main><footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer></NewThreadDialogProvider></body></html>
+    <html lang="en">
+      <body>
+        <NewThreadDialogProvider
+          isAuthenticated={Boolean(viewer)}
+          viewerRole={viewer?.role ?? null}
+          categories={categories}
+          uploadsEnabled={Boolean(viewer) && uploadsEnabled()}
+        >
+          <Header viewer={headerViewer} accessMode={accessMode} />
+          <main>{children}</main>
+          <footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer>
+        </NewThreadDialogProvider>
+      </body>
+    </html>
   );
   if (isE2ETestMode()) return content;
   return (

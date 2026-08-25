@@ -4,6 +4,7 @@ import { useActionState, useId, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { createSpace, type SpaceActionState } from "@/actions/spaces";
 import { FieldMessage } from "@/components/auth/auth-controls";
+import { SPACE_POSTING_POLICY_OPTIONS } from "@/components/forum/space-posting-policy";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 const initialState = { status: "idle" } satisfies SpaceActionState;
@@ -74,6 +75,33 @@ function CreateSpaceForm() {
         </div>
         <FieldMessage id="new-space-color-error">{state.fieldErrors?.color}</FieldMessage>
       </div>
+      <fieldset
+        aria-describedby={state.fieldErrors?.postingPolicy ? "new-space-posting-policy-error" : undefined}
+        aria-invalid={Boolean(state.fieldErrors?.postingPolicy)}
+      >
+        <legend className="label">Posting permissions</legend>
+        <div className="space-y-2">
+          {SPACE_POSTING_POLICY_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--line)] px-3.5 py-3 transition hover:bg-[var(--surface-soft)] has-[:checked]:border-[var(--brand)] has-[:checked]:bg-[var(--brand-soft)]"
+            >
+              <input
+                className="mt-1 accent-[var(--brand)]"
+                type="radio"
+                name="postingPolicy"
+                value={option.value}
+                defaultChecked={option.value === "OPEN"}
+              />
+              <span>
+                <span className="block text-sm font-extrabold">{option.label}</span>
+                <span className="mt-0.5 block text-xs leading-5 muted">{option.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <FieldMessage id="new-space-posting-policy-error">{state.fieldErrors?.postingPolicy}</FieldMessage>
+      </fieldset>
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Creating…">Create space</SubmitButton>
       </div>

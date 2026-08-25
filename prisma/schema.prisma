@@ -65,57 +65,64 @@ enum AttachmentContext {
   DRAFT
 }
 
+enum SpacePostingPolicy {
+  OPEN
+  ANNOUNCEMENTS
+  ADMIN_ONLY
+}
+
 model User {
-  id               String       @id @default(cuid())
-  clerkId          String       @unique
+  id               String     @id @default(cuid())
+  clerkId          String     @unique
   email            String?
-  username         String       @unique
+  username         String     @unique
   displayName      String
-  bio              String       @default("")
+  bio              String     @default("")
   imageUrl         String?
-  role             UserRole     @default(MEMBER)
-  status           UserStatus   @default(ACTIVE)
+  role             UserRole   @default(MEMBER)
+  status           UserStatus @default(ACTIVE)
   suspendedUntil   DateTime?
   suspensionReason String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
   deletedAt        DateTime?
 
-  threads              Thread[]
-  replies              Reply[]
-  threadVotes          ThreadVote[]
-  replyVotes           ReplyVote[]
-  bookmarks            Bookmark[]
-  following            Follow[]             @relation("Following")
-  followers            Follow[]             @relation("Followers")
-  conversationsAsOne   Conversation[]       @relation("ConversationMemberOne")
-  conversationsAsTwo   Conversation[]       @relation("ConversationMemberTwo")
-  messages             Message[]
-  notifications        Notification[]       @relation("NotificationRecipient")
-  notificationActions  Notification[]       @relation("NotificationActor")
-  reports              Report[]             @relation("ReportReporter")
-  reviewedReports      Report[]             @relation("ReportReviewer")
-  moderationActions    ModerationAction[]    @relation("Moderator")
-  moderationReceived   ModerationAction[]    @relation("ModeratedUser")
-  blocksInitiated      Block[]               @relation("Blocker")
-  blocksReceived       Block[]               @relation("Blocked")
-  attachments          Attachment[]
+  threads             Thread[]
+  replies             Reply[]
+  threadVotes         ThreadVote[]
+  replyVotes          ReplyVote[]
+  bookmarks           Bookmark[]
+  following           Follow[]           @relation("Following")
+  followers           Follow[]           @relation("Followers")
+  conversationsAsOne  Conversation[]     @relation("ConversationMemberOne")
+  conversationsAsTwo  Conversation[]     @relation("ConversationMemberTwo")
+  messages            Message[]
+  notifications       Notification[]     @relation("NotificationRecipient")
+  notificationActions Notification[]     @relation("NotificationActor")
+  reports             Report[]           @relation("ReportReporter")
+  reviewedReports     Report[]           @relation("ReportReviewer")
+  moderationActions   ModerationAction[] @relation("Moderator")
+  moderationReceived  ModerationAction[] @relation("ModeratedUser")
+  blocksInitiated     Block[]            @relation("Blocker")
+  blocksReceived      Block[]            @relation("Blocked")
+  attachments         Attachment[]
 
   @@index([role, status])
   @@index([createdAt])
 }
 
 model Category {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  slug        String   @unique
-  description String
-  color       String   @default("#0f766e")
-  icon        String   @default("messages-square")
-  position    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  threads     Thread[]
+  id            String             @id @default(cuid())
+  name          String             @unique
+  slug          String             @unique
+  description   String
+  color         String             @default("#0f766e")
+  icon          String             @default("messages-square")
+  position      Int                @default(0)
+  postingPolicy SpacePostingPolicy @default(OPEN)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  threads       Thread[]
 
   @@index([position])
 }
@@ -129,21 +136,21 @@ model Tag {
 }
 
 model Thread {
-  id        String        @id @default(cuid())
-  slug      String        @unique
-  title     String
-  body      String
-  status    ContentStatus @default(PUBLISHED)
-  isPinned  Boolean       @default(false)
-  isLocked  Boolean       @default(false)
-  viewCount Int           @default(0)
-  authorId  String
+  id         String        @id @default(cuid())
+  slug       String        @unique
+  title      String
+  body       String
+  status     ContentStatus @default(PUBLISHED)
+  isPinned   Boolean       @default(false)
+  isLocked   Boolean       @default(false)
+  viewCount  Int           @default(0)
+  authorId   String
   categoryId String
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  editedAt  DateTime?
-  bumpedAt  DateTime      @default(now())
-  deletedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  editedAt   DateTime?
+  bumpedAt   DateTime      @default(now())
+  deletedAt  DateTime?
 
   author        User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
   category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -179,9 +186,9 @@ model Reply {
   editedAt  DateTime?
   deletedAt DateTime?
 
-  thread       Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  author       User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
-  votes        ReplyVote[]
+  thread        Thread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  votes         ReplyVote[]
   notifications Notification[]
 
   @@index([threadId, status, createdAt])
@@ -233,15 +240,15 @@ model Follow {
 }
 
 model Conversation {
-  id            String   @id @default(cuid())
-  pairKey       String   @unique
+  id            String         @id @default(cuid())
+  pairKey       String         @unique
   memberOneId   String
   memberTwoId   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  lastMessageAt DateTime @default(now())
-  memberOne     User     @relation("ConversationMemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
-  memberTwo     User     @relation("ConversationMemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  lastMessageAt DateTime       @default(now())
+  memberOne     User           @relation("ConversationMemberOne", fields: [memberOneId], references: [id], onDelete: Cascade)
+  memberTwo     User           @relation("ConversationMemberTwo", fields: [memberTwoId], references: [id], onDelete: Cascade)
   messages      Message[]
   notifications Notification[]
 
@@ -250,16 +257,16 @@ model Conversation {
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   conversationId String
   authorId       String
   body           String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime       @default(now())
   editedAt       DateTime?
   readAt         DateTime?
   deletedAt      DateTime?
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  author         User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author         User           @relation(fields: [authorId], references: [id], onDelete: Restrict)
   notifications  Notification[]
 
   @@index([conversationId, createdAt])

@@ -39,10 +39,25 @@ afterEach(() => {
   delete prototype.close;
 });
 
-function Composer({ isAuthenticated = true, categories = [{ id: "general", name: "General" }, { id: "help", name: "Help" }] }: { isAuthenticated?: boolean; categories?: { id: string; name: string }[] }) {
+type PostingPolicy = "OPEN" | "ANNOUNCEMENTS" | "ADMIN_ONLY";
+type ViewerRole = "MEMBER" | "MODERATOR" | "ADMIN";
+
+function Composer({
+  isAuthenticated = true,
+  viewerRole = "MEMBER",
+  categories = [
+    { id: "general", name: "General", postingPolicy: "OPEN" },
+    { id: "help", name: "Help", postingPolicy: "OPEN" },
+  ],
+}: {
+  isAuthenticated?: boolean;
+  viewerRole?: ViewerRole;
+  categories?: { id: string; name: string; postingPolicy: PostingPolicy }[];
+}) {
   return (
     <NewThreadDialogProvider
       isAuthenticated={isAuthenticated}
+      viewerRole={isAuthenticated ? viewerRole : null}
       categories={categories}
       uploadsEnabled={false}
     >
@@ -118,5 +133,40 @@ describe("NewThreadDialogProvider", () => {
     render(<Composer categories={[]} />);
     expect(screen.queryByRole("button", { name: "Header new thread" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Category new thread" })).not.toBeInTheDocument();
+  });
+
+  it("only offers open spaces to members and moderators", async () => {
+    const user = userEvent.setup();
+    const categories = [
+      { id: "open", name: "Open", postingPolicy: "OPEN" as const },
+      { id: "news", name: "News", postingPolicy: "ANNOUNCEMENTS" as const },
+      { id: "staff", name: "Staff", postingPolicy: "ADMIN_ONLY" as const },
+    ];
+    const { rerender } = render(<Composer categories={categories} />);
+
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    expect(screen.getByRole("option", { name: "Open" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "News" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Staff" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close new thread dialog" }));
+    rerender(<Composer viewerRole="MODERATOR" categories={categories} />);
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    expect(screen.queryByRole("option", { name: "News" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Staff" })).not.toBeInTheDocument();
+  });
+
+  it("offers every space to admins", async () => {
+    const user = userEvent.setup();
+    render(<Composer viewerRole="ADMIN" categories={[
+      { id: "open", name: "Open", postingPolicy: "OPEN" },
+      { id: "news", name: "News", postingPolicy: "ANNOUNCEMENTS" },
+      { id: "staff", name: "Staff", postingPolicy: "ADMIN_ONLY" },
+    ]} />);
+
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    expect(screen.getByRole("option", { name: "Open" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "News" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Staff" })).toBeInTheDocument();
   });
 });
