@@ -12,7 +12,7 @@ describe("thread queries", () => {
     [undefined, [{ isPinned: "desc" }, { bumpedAt: "desc" }]],
     ["recent", [{ isPinned: "desc" }, { bumpedAt: "desc" }]],
     ["new", [{ isPinned: "desc" }, { createdAt: "desc" }]],
-    ["top", [{ isPinned: "desc" }, { votes: { _count: "desc" } }, { bumpedAt: "desc" }]],
+    ["top", [{ isPinned: "desc" }, { upvotes: { _count: "desc" } }, { bumpedAt: "desc" }]],
   ] as const)("builds the %s thread ordering", async (sort, orderBy) => {
     await listThreads({ sort, categoryId: "category", tagId: "tag", authorId: "author", take: 12 });
     expect(findMany).toHaveBeenCalledWith({

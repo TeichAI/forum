@@ -73,9 +73,9 @@ const sections: LegalSection[] = [
     id: "public-private",
     title: "Public posts, Mail, and community interactions",
     content: <>
-      <p>Profiles, usernames, display names, biographies, avatars, threads, replies, tags, votes, follower relationships, and similar community activity may be visible to other users or the public. Public content may be indexed by search engines, quoted, linked, archived, or copied by others.</p>
+      <p>Profiles, usernames, display names, biographies, avatars, threads, replies, tags, upvotes, dislikes, follower relationships, and similar community activity may be visible to other users or the public. Public content may be indexed by search engines, quoted, linked, archived, or copied by others.</p>
       <p>Teich Mail is intended for the two participants in each private thread, but it is not end-to-end encrypted and is not guaranteed to be confidential. Staff BCC creates separate one-to-one threads. Recipients can copy or share Mail. Authorized staff or service providers may access limited Mail data when it is reported, needed to investigate abuse or a technical issue, required to protect users or the Service, or required by law.</p>
-      <p>Mentions, replies, votes, follows, reports, and moderation actions can generate notifications. Mail uses its own unread count. Blocking limits certain interactions but cannot erase prior content, prevent every indirect interaction, or control activity outside the Service.</p>
+      <p>Mentions, replies, upvotes, follows, reports, and moderation actions can generate notifications. Dislikes do not generate notifications. Mail uses its own unread count. Blocking limits certain interactions but cannot erase prior content, prevent every indirect interaction, or control activity outside the Service.</p>
     </>,
   },
   {

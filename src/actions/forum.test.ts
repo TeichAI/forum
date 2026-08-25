@@ -8,8 +8,10 @@ const mocks = vi.hoisted(() => {
     category: { findUnique: method() },
     thread: { create: method(), findUnique: method(), update: method() },
     reply: { create: method(), findUnique: method(), update: method() },
-    threadVote: { findUnique: method(), create: method(), delete: method() },
-    replyVote: { findUnique: method(), create: method(), delete: method() },
+    threadUpvote: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
+    threadDislike: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
+    replyUpvote: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
+    replyDislike: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
     bookmark: { findUnique: method(), create: method(), delete: method() },
     follow: { findUnique: method(), create: method(), delete: method() },
     notification: { create: method(), createMany: method(), updateMany: method() },
@@ -49,8 +51,8 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
   moderateReport, reportContent, setContentVisibility,
-  suspendMember, toggleBookmark, toggleFollow, toggleReplyVote,
-  toggleThreadLock, toggleThreadVote, updateReply, updateThread,
+  suspendMember, toggleBookmark, toggleFollow, toggleReplyReaction,
+  toggleThreadLock, toggleThreadReaction, updateReply, updateThread,
 } from "./forum";
 
 const ids = {
@@ -97,8 +99,8 @@ describe("discussion actions", () => {
     });
     const actions = [
       () => createReply(new FormData()),
-      () => toggleThreadVote(new FormData()),
-      () => toggleReplyVote(new FormData()),
+      () => toggleThreadReaction(new FormData()),
+      () => toggleReplyReaction(new FormData()),
       () => toggleBookmark(new FormData()),
       () => toggleFollow(new FormData()),
       () => updateThread(new FormData()),
@@ -265,9 +267,9 @@ describe("discussion actions", () => {
   });
 
   it.each([
-    ["thread", toggleThreadVote, "threadId", "threadVote", "userId_threadId"],
-    ["reply", toggleReplyVote, "replyId", "replyVote", "userId_replyId"],
-  ] as const)("adds and removes a %s vote", async (kind, action, idName, modelName, compound) => {
+    ["thread", toggleThreadReaction, "threadId", "threadUpvote", "userId_threadId"],
+    ["reply", toggleReplyReaction, "replyId", "replyUpvote", "userId_replyId"],
+  ] as const)("adds and removes a %s upvote", async (kind, action, idName, modelName, compound) => {
     const targetId = kind === "thread" ? ids.thread : ids.reply;
     const model = mocks.db[modelName];
     const targetModel = kind === "thread" ? mocks.db.thread : mocks.db.reply;
@@ -275,19 +277,76 @@ describe("discussion actions", () => {
       ? { authorId: ids.other, status: "PUBLISHED" }
       : { authorId: ids.other, threadId: ids.thread, status: "PUBLISHED" });
     model.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ userId: ids.user });
-    await action(form({ [idName]: targetId, returnTo: "/safe" }));
+    await action(form({ [idName]: targetId, reaction: "UPVOTE", returnTo: "/safe" }));
     expect(model.create).toHaveBeenCalled();
     expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "UPVOTE", recipientId: ids.other }) });
-    await action(form({ [idName]: targetId, returnTo: "https://evil.example" }));
+    await action(form({ [idName]: targetId, reaction: "UPVOTE", returnTo: "https://evil.example" }));
     expect(model.delete).toHaveBeenCalledWith({ where: { [compound]: expect.any(Object) } });
     expect(mocks.revalidatePath).toHaveBeenLastCalledWith("/");
   });
 
-  it("rejects votes for unpublished content and skips self-vote notifications", async () => {
-    mocks.db.thread.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ authorId: ids.user, status: "PUBLISHED" });
-    await expect(toggleThreadVote(form({ threadId: ids.thread }))).rejects.toThrow("Thread not found");
-    mocks.db.threadVote.findUnique.mockResolvedValue(null);
-    await toggleThreadVote(form({ threadId: ids.thread }));
+  it.each([
+    ["thread", toggleThreadReaction, "threadId", "threadUpvote", "threadDislike"],
+    ["reply", toggleReplyReaction, "replyId", "replyUpvote", "replyDislike"],
+  ] as const)("switches a %s reaction atomically in either direction", async (kind, action, idName, upvoteName, dislikeName) => {
+    const targetId = kind === "thread" ? ids.thread : ids.reply;
+    const targetModel = kind === "thread" ? mocks.db.thread : mocks.db.reply;
+    targetModel.findUnique.mockResolvedValue(kind === "thread"
+      ? { authorId: ids.other, status: "PUBLISHED" }
+      : { authorId: ids.other, threadId: ids.thread, status: "PUBLISHED" });
+
+    mocks.db[dislikeName].findUnique.mockResolvedValue(null);
+    await action(form({ [idName]: targetId, reaction: "DISLIKE" }));
+    expect(mocks.db[upvoteName].deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({ userId: ids.user }) });
+    expect(mocks.db[dislikeName].create).toHaveBeenCalled();
+    expect(mocks.db.notification.create).not.toHaveBeenCalled();
+
+    mocks.db.$transaction.mockClear();
+    mocks.db.notification.create.mockClear();
+    mocks.db[upvoteName].create.mockClear();
+    mocks.db[dislikeName].deleteMany.mockClear();
+    mocks.db[upvoteName].findUnique.mockResolvedValue(null);
+    await action(form({ [idName]: targetId, reaction: "UPVOTE" }));
+    expect(mocks.db[dislikeName].deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({ userId: ids.user }) });
+    expect(mocks.db[upvoteName].create).toHaveBeenCalled();
+    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "UPVOTE" }) });
+    expect(mocks.db.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates reaction values before accessing content", async () => {
+    await expect(toggleThreadReaction(form({ threadId: ids.thread, reaction: "LIKE" }))).rejects.toThrow();
+    expect(mocks.db.thread.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["thread", toggleThreadReaction, "threadId", "threadUpvote", "Thread not found"],
+    ["reply", toggleReplyReaction, "replyId", "replyUpvote", "Reply not found"],
+  ] as const)("rejects unpublished %s targets and skips self-upvote notifications", async (kind, action, idName, upvoteName, notFoundMessage) => {
+    const targetId = kind === "thread" ? ids.thread : ids.reply;
+    const targetModel = kind === "thread" ? mocks.db.thread : mocks.db.reply;
+    targetModel.findUnique.mockResolvedValueOnce({ status: "HIDDEN" }).mockResolvedValueOnce(kind === "thread"
+      ? { authorId: ids.user, status: "PUBLISHED" }
+      : { authorId: ids.user, threadId: ids.thread, status: "PUBLISHED" });
+    await expect(action(form({ [idName]: targetId, reaction: "UPVOTE" }))).rejects.toThrow(notFoundMessage);
+    mocks.db[upvoteName].findUnique.mockResolvedValue(null);
+    await action(form({ [idName]: targetId, reaction: "UPVOTE" }));
+    expect(mocks.db.notification.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["thread", "reply"] as const)("removes an active %s dislike without creating a notification", async (kind) => {
+    const action = kind === "thread" ? toggleThreadReaction : toggleReplyReaction;
+    const idName = kind === "thread" ? "threadId" : "replyId";
+    const targetId = kind === "thread" ? ids.thread : ids.reply;
+    const targetModel = kind === "thread" ? mocks.db.thread : mocks.db.reply;
+    const dislikeModel = kind === "thread" ? mocks.db.threadDislike : mocks.db.replyDislike;
+    targetModel.findUnique.mockResolvedValue(kind === "thread"
+      ? { authorId: ids.other, status: "PUBLISHED" }
+      : { authorId: ids.other, threadId: ids.thread, status: "PUBLISHED" });
+    dislikeModel.findUnique.mockResolvedValue({ userId: ids.user });
+
+    await action(form({ [idName]: targetId, reaction: "DISLIKE" }));
+
+    expect(dislikeModel.delete).toHaveBeenCalled();
     expect(mocks.db.notification.create).not.toHaveBeenCalled();
   });
 

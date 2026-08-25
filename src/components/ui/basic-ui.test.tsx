@@ -34,8 +34,10 @@ describe("basic UI", () => {
   });
 
   it("switches submit content and disabled state while pending", () => {
-    const { rerender } = render(<SubmitButton>Save</SubmitButton>);
-    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    const { rerender } = render(<SubmitButton aria-label="Save profile" aria-pressed>Save</SubmitButton>);
+    expect(screen.getByRole("button", { name: "Save profile" })).toBeEnabled();
+    expect(screen.getByRole("button")).toHaveAttribute("aria-label", "Save profile");
+    expect(screen.getByRole("button")).toHaveAttribute("aria-pressed", "true");
     pending.value = true;
     rerender(<SubmitButton pendingLabel="Working" className="custom">Save</SubmitButton>);
     expect(screen.getByRole("button", { name: "Working" })).toBeDisabled();

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bookmark, MessageCircle, Pin, ThumbsUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, MessageCircle, Pin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { threadListInclude } from "@/lib/queries";
@@ -55,8 +55,11 @@ export function ThreadCard({ thread }: { thread: ThreadCardData }) {
               </div>
             ) : null}
             <div className="ml-auto flex items-center gap-3 text-xs font-semibold muted">
-              <span className="inline-flex items-center gap-1.5" aria-label={`${thread._count.votes} votes`}>
-                <ThumbsUp size={14} aria-hidden />{thread._count.votes}
+              <span className="inline-flex items-center gap-1.5" aria-label={`${thread._count.upvotes} upvotes`}>
+                <ArrowUp size={14} aria-hidden />{thread._count.upvotes}
+              </span>
+              <span className="inline-flex items-center gap-1.5" aria-label={`${thread._count.dislikes} dislikes`}>
+                <ArrowDown size={14} aria-hidden />{thread._count.dislikes}
               </span>
               <span className="inline-flex items-center gap-1.5" aria-label={`${thread._count.replies} replies`}>
                 <MessageCircle size={14} aria-hidden />{thread._count.replies}

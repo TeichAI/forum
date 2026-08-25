@@ -23,7 +23,7 @@ const thread = {
   author: { id: "author", username: "author", displayName: "Author", imageUrl: null, role: "ADMIN" },
   category: { ...category, postingPolicy: "ANNOUNCEMENTS" as const },
   tags: [{ threadId: "thread", tagId: "tag", tag: { id: "tag", name: "Testing", slug: "testing", createdAt: new Date() } }],
-  _count: { replies: 2, votes: 3, bookmarks: 4 },
+  _count: { replies: 2, upvotes: 3, dislikes: 2, bookmarks: 4 },
 };
 
 describe("forum display components", () => {
@@ -54,7 +54,8 @@ describe("forum display components", () => {
     expect(screen.getByRole("link", { name: "#Testing" })).toHaveAttribute("href", "/tag/testing");
     expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
     expect(screen.getByLabelText("Announcements")).toHaveAttribute("title", "Only admins can start discussions; everyone can comment.");
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByLabelText("3 upvotes")).toHaveTextContent("3");
+    expect(screen.getByLabelText("2 dislikes")).toHaveTextContent("2");
   });
 
   it("renders an accessible report form with its target context", async () => {

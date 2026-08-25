@@ -88,14 +88,20 @@ test("a member updates their profile and publishes a tagged discussion", async (
   expect(missingPage?.status()).toBe(404);
 });
 
-test("another member replies, votes, follows, and sends private Mail", async ({ context, page }) => {
+test("another member replies, switches reactions, follows, and sends private Mail", async ({ context, page }) => {
   await useIdentity(context, featureIds.other);
   await page.goto(createdThreadUrl);
   await page.getByPlaceholder("Write a thoughtful reply…").fill("A thoughtful reply for @pond_member from the second member.");
   await page.getByRole("button", { name: "Post reply" }).click();
   await expect(page.getByText(/A thoughtful reply for @pond_member/)).toBeVisible();
-  const threadVoteForm = page.locator('form:has(input[name="threadId"])').first();
-  await threadVoteForm.getByRole("button").click();
+  const upvote = page.getByRole("button", { name: /^Upvote thread,/ });
+  const dislike = page.getByRole("button", { name: /^Dislike thread,/ });
+  await expect(upvote).toHaveAttribute("aria-pressed", "false");
+  await upvote.click();
+  await expect(page.getByRole("button", { name: "Upvote thread, 1 upvote" })).toHaveAttribute("aria-pressed", "true");
+  await dislike.click();
+  await expect(page.getByRole("button", { name: "Upvote thread, 0 upvotes" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Dislike thread, 1 dislike" })).toHaveAttribute("aria-pressed", "true");
 
   await page.goto(`/members/${featureIds.member}`);
   await page.getByRole("button", { name: "Follow" }).click();
@@ -114,6 +120,7 @@ test("the recipient sees notifications and can report content for staff review",
   await expect(page.getByRole("link", { name: "1 unread mail threads" })).toBeVisible();
   await expect(page.getByText(/replied to your discussion/)).toBeVisible();
   await expect(page.getByText(/upvoted your post/)).toBeVisible();
+  await expect(page.getByText(/disliked your post/)).toHaveCount(0);
   await expect(page.getByText(/started following you/)).toBeVisible();
   await expect(page.getByText(/mentioned you/)).toBeVisible();
   await page.locator('a[href*="#reply-"]').filter({ hasText: "replied to your discussion" }).click();

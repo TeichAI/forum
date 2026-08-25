@@ -19,6 +19,7 @@ import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils"
 
 const titleSchema = z.string().trim().min(5).max(160);
 const bodySchema = z.string().trim().min(2).max(50_000);
+const reactionSchema = z.enum(["UPVOTE", "DISLIKE"]);
 
 async function mutationLimit(
   user: { clerkId: string; role: string },
@@ -126,39 +127,71 @@ export async function createReply(formData: FormData) {
   return { status: "success" as const, replyId: reply.id };
 }
 
-export async function toggleThreadVote(formData: FormData) {
+export async function toggleThreadReaction(formData: FormData) {
   const user = await requireUser();
   const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
   if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
+  const reaction = reactionSchema.parse(formData.get("reaction"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const thread = await db.thread.findUnique({ where: { id: threadId }, select: { authorId: true, status: true } });
   if (!thread || thread.status !== "PUBLISHED") throw new Error("Thread not found");
-  const existing = await db.threadVote.findUnique({ where: { userId_threadId: { userId: user.id, threadId } } });
-  if (existing) {
-    await db.threadVote.delete({ where: { userId_threadId: { userId: user.id, threadId } } });
-  } else {
-    await db.threadVote.create({ data: { userId: user.id, threadId } });
-    if (thread.authorId !== user.id) await db.notification.create({ data: { type: "UPVOTE", recipientId: thread.authorId, actorId: user.id, threadId } });
-  }
+  await db.$transaction(async (tx) => {
+    if (reaction === "UPVOTE") {
+      const existing = await tx.threadUpvote.findUnique({ where: { userId_threadId: { userId: user.id, threadId } } });
+      if (existing) {
+        await tx.threadUpvote.delete({ where: { userId_threadId: { userId: user.id, threadId } } });
+      } else {
+        await tx.threadDislike.deleteMany({ where: { userId: user.id, threadId } });
+        await tx.threadUpvote.create({ data: { userId: user.id, threadId } });
+        if (thread.authorId !== user.id) {
+          await tx.notification.create({ data: { type: "UPVOTE", recipientId: thread.authorId, actorId: user.id, threadId } });
+        }
+      }
+    } else {
+      const existing = await tx.threadDislike.findUnique({ where: { userId_threadId: { userId: user.id, threadId } } });
+      if (existing) {
+        await tx.threadDislike.delete({ where: { userId_threadId: { userId: user.id, threadId } } });
+      } else {
+        await tx.threadUpvote.deleteMany({ where: { userId: user.id, threadId } });
+        await tx.threadDislike.create({ data: { userId: user.id, threadId } });
+      }
+    }
+  });
   revalidatePath(returnTo);
 }
 
-export async function toggleReplyVote(formData: FormData) {
+export async function toggleReplyReaction(formData: FormData) {
   const user = await requireUser();
   const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
   if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
+  const reaction = reactionSchema.parse(formData.get("reaction"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, select: { authorId: true, threadId: true, status: true } });
   if (!reply || reply.status !== "PUBLISHED") throw new Error("Reply not found");
-  const existing = await db.replyVote.findUnique({ where: { userId_replyId: { userId: user.id, replyId } } });
-  if (existing) {
-    await db.replyVote.delete({ where: { userId_replyId: { userId: user.id, replyId } } });
-  } else {
-    await db.replyVote.create({ data: { userId: user.id, replyId } });
-    if (reply.authorId !== user.id) await db.notification.create({ data: { type: "UPVOTE", recipientId: reply.authorId, actorId: user.id, replyId, threadId: reply.threadId } });
-  }
+  await db.$transaction(async (tx) => {
+    if (reaction === "UPVOTE") {
+      const existing = await tx.replyUpvote.findUnique({ where: { userId_replyId: { userId: user.id, replyId } } });
+      if (existing) {
+        await tx.replyUpvote.delete({ where: { userId_replyId: { userId: user.id, replyId } } });
+      } else {
+        await tx.replyDislike.deleteMany({ where: { userId: user.id, replyId } });
+        await tx.replyUpvote.create({ data: { userId: user.id, replyId } });
+        if (reply.authorId !== user.id) {
+          await tx.notification.create({ data: { type: "UPVOTE", recipientId: reply.authorId, actorId: user.id, replyId, threadId: reply.threadId } });
+        }
+      }
+    } else {
+      const existing = await tx.replyDislike.findUnique({ where: { userId_replyId: { userId: user.id, replyId } } });
+      if (existing) {
+        await tx.replyDislike.delete({ where: { userId_replyId: { userId: user.id, replyId } } });
+      } else {
+        await tx.replyUpvote.deleteMany({ where: { userId: user.id, replyId } });
+        await tx.replyDislike.create({ data: { userId: user.id, replyId } });
+      }
+    }
+  });
   revalidatePath(returnTo);
 }
 

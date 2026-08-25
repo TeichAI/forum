@@ -18,13 +18,20 @@ describe("thread queries against PostgreSQL", () => {
     expect(results.map((thread) => thread.id)).toEqual([pinned.id, newer.id, older.id]);
   });
 
-  it("orders top discussions by vote count after pinned content", async () => {
-    const [author, voterOne, voterTwo] = await Promise.all([createTestUser(), createTestUser(), createTestUser()]);
+  it("orders top discussions by upvote count while ignoring dislikes", async () => {
+    const [author, voterOne, voterTwo, dislikerOne, dislikerTwo, dislikerThree] = await Promise.all([
+      createTestUser(), createTestUser(), createTestUser(), createTestUser(), createTestUser(), createTestUser(),
+    ]);
     const category = await createTestCategory();
     const low = await createTestThread(author.id, category.id, { title: "Low" });
     const high = await createTestThread(author.id, category.id, { title: "High" });
-    await db.threadVote.createMany({ data: [
+    await db.threadUpvote.createMany({ data: [
       { userId: voterOne.id, threadId: high.id }, { userId: voterTwo.id, threadId: high.id }, { userId: voterOne.id, threadId: low.id },
+    ] });
+    await db.threadDislike.createMany({ data: [
+      { userId: dislikerOne.id, threadId: high.id },
+      { userId: dislikerTwo.id, threadId: high.id },
+      { userId: dislikerThree.id, threadId: high.id },
     ] });
     const results = await listThreads({ sort: "top" });
     expect(results.map((thread) => thread.id)).toEqual([high.id, low.id]);

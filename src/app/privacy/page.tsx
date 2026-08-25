@@ -27,7 +27,7 @@ const sections: LegalSection[] = [
       <ul>
         <li><strong>Account and identity information:</strong> email address, username, display name, profile photo, authentication method, and, when requested by our identity provider, first and last name, password, verification status, or multifactor settings. The forum application does not store your password; Clerk processes authentication credentials.</li>
         <li><strong>Profile information:</strong> biography, public-facing name, avatar, role, account status, and account preferences.</li>
-        <li><strong>Community content:</strong> threads, replies, tags, mentions, edits, votes, bookmarks, follows, blocks, and the time associated with those actions.</li>
+        <li><strong>Community content:</strong> threads, replies, tags, mentions, edits, upvotes, dislikes, bookmarks, follows, blocks, and the time associated with those actions.</li>
         <li><strong>Communications:</strong> Teich Mail, waitlist submissions, account and support communications, and information you send when contacting us.</li>
         <li><strong>Safety and moderation information:</strong> reports, reasons, supporting details, appeals, staff notes, case assignments, enforcement actions, suspension details, and related records.</li>
         <li><strong>Files and media:</strong> images you upload to posts, replies, Mail drafts, Mail entries, or your account, together with file name, size, storage key, URL, owner, and upload time.</li>
@@ -57,9 +57,9 @@ const sections: LegalSection[] = [
       <p>We use personal information to:</p>
       <ul>
         <li>create, authenticate, secure, and maintain accounts and waitlist entries;</li>
-        <li>display profiles and community content and deliver threads, replies, votes, follows, bookmarks, Mail, mentions, and notifications;</li>
+        <li>display profiles and community content and deliver threads, replies, reactions, follows, bookmarks, Mail, mentions, and notifications;</li>
         <li>store and serve uploads, synchronize account changes, and provide settings and account-deletion controls;</li>
-        <li>personalize basic forum state, such as whether content is saved, voted on, read, or available to your role;</li>
+        <li>personalize basic forum state, such as whether content is saved, upvoted, disliked, read, or available to your role;</li>
         <li>detect spam, fraud, abuse, attacks, policy evasion, and unauthorized access; enforce rate limits and access controls; and investigate security incidents;</li>
         <li>receive and investigate reports, document moderation decisions, enforce the <Link href="/terms">Terms of Service</Link>, and protect users, Teich, and the public;</li>
         <li>operate, debug, maintain, measure, and improve the Service and develop new features;</li>
@@ -88,7 +88,7 @@ const sections: LegalSection[] = [
     id: "visibility",
     title: "What is public and what is limited-access",
     content: <>
-      <p><strong>Public or community-visible information</strong> can include your username, display name, biography, avatar, role badge, join date, threads, replies, tags, edits, vote counts, follower relationships, and other visible community activity. Public pages can be indexed, cached, archived, quoted, or copied by users, search engines, and services outside Teich’s control.</p>
+      <p><strong>Public or community-visible information</strong> can include your username, display name, biography, avatar, role badge, join date, threads, replies, tags, edits, upvote and dislike counts, follower relationships, and other visible community activity. Public pages can be indexed, cached, archived, quoted, or copied by users, search engines, and services outside Teich’s control.</p>
       <p><strong>Account-limited information</strong> includes bookmarks, blocks, account settings, email address, sessions, and authentication details. Access is limited to you, authorized staff, and service providers as necessary for their functions. Administrators may have broader access than moderators where needed for account administration.</p>
       <p><strong>Teich Mail</strong> is visible to the two thread participants and is not end-to-end encrypted. Staff BCC sends independent one-to-one threads; recipients do not see one another. Authorized staff may access limited context around a Mail entry when it is reported, reasonably needed for safety, abuse prevention, support, or system integrity, or required by law. Recipients can save or share Mail, so do not treat it as a secure channel.</p>
       <p><strong>Reports and moderation records</strong> are limited to authorized staff and relevant providers. A person affected by a report may receive enough information to understand and appeal an action, but we generally do not disclose a reporter’s identity unless necessary for fairness, safety, law, or with the reporter’s permission.</p>
@@ -136,7 +136,7 @@ const sections: LegalSection[] = [
     title: "Emails and notifications",
     content: <>
       <p>We or Clerk may send service communications such as verification codes, invitations, password or account notices, security alerts, moderation updates, and important policy or service changes. These transactional or relationship messages are part of providing and protecting the Service and may not have a marketing unsubscribe option.</p>
-      <p>In-product notifications may be generated by replies, mentions, votes, follows, and moderation actions. Mail has a separate unread-thread count. You may mark notifications and Mail as read and can stop some interactions by blocking another member. If we introduce optional promotional email, we will provide any consent and unsubscribe controls required by law.</p>
+      <p>In-product notifications may be generated by replies, mentions, upvotes, follows, and moderation actions. Dislikes do not generate notifications. Mail has a separate unread-thread count. You may mark notifications and Mail as read and can stop some interactions by blocking another member. If we introduce optional promotional email, we will provide any consent and unsubscribe controls required by law.</p>
     </>,
   },
   {

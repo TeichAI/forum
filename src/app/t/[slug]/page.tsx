@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bookmark, Lock, MessageCircle, ThumbsUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, Lock, MessageCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { createReply, toggleBookmark, toggleReplyVote, toggleThreadLock, toggleThreadVote } from "@/actions/forum";
+import { createReply, toggleBookmark, toggleReplyReaction, toggleThreadLock, toggleThreadReaction } from "@/actions/forum";
 import { ContentMenu } from "@/components/forum/content-menu";
 import { NestedReplyComposer, NestedReplyControl, ReplyComposerProvider } from "@/components/forum/nested-reply-composer";
 import { ReportForm } from "@/components/forum/report-form";
@@ -41,15 +41,17 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
       author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
       category: true,
       tags: { include: { tag: true } },
-      votes: viewer ? { where: { userId: viewer.id } } : false,
+      upvotes: viewer ? { where: { userId: viewer.id } } : false,
+      dislikes: viewer ? { where: { userId: viewer.id } } : false,
       bookmarks: viewer ? { where: { userId: viewer.id } } : false,
-      _count: { select: { votes: true, replies: { where: { status: "PUBLISHED" } } } },
+      _count: { select: { upvotes: true, dislikes: true, replies: { where: { status: "PUBLISHED" } } } },
       replies: {
         orderBy: { createdAt: "asc" },
         include: {
           author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
-          votes: viewer ? { where: { userId: viewer.id } } : false,
-          _count: { select: { votes: true } },
+          upvotes: viewer ? { where: { userId: viewer.id } } : false,
+          dislikes: viewer ? { where: { userId: viewer.id } } : false,
+          _count: { select: { upvotes: true, dislikes: true } },
         },
       },
     },
@@ -106,11 +108,30 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
           className="flex flex-wrap items-center gap-2 rounded-b-[17px] border-t px-5 py-3 sm:px-8"
           style={{ borderColor: "var(--line)", background: "var(--surface-soft)" }}
         >
-          <RateLimitForm action={toggleThreadVote}>
+          <RateLimitForm action={toggleThreadReaction}>
             <input type="hidden" name="threadId" value={thread.id} />
+            <input type="hidden" name="reaction" value="UPVOTE" />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <SubmitButton className={`button ${thread.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
-              <ThumbsUp size={16} /> {thread._count.votes}
+            <SubmitButton
+              className={`button ${thread.upvotes?.length ? "button-primary" : "button-ghost"}`}
+              pendingLabel="Updating…"
+              aria-label={`Upvote thread, ${thread._count.upvotes} ${thread._count.upvotes === 1 ? "upvote" : "upvotes"}`}
+              aria-pressed={Boolean(thread.upvotes?.length)}
+            >
+              <ArrowUp size={16} aria-hidden /> {thread._count.upvotes}
+            </SubmitButton>
+          </RateLimitForm>
+          <RateLimitForm action={toggleThreadReaction}>
+            <input type="hidden" name="threadId" value={thread.id} />
+            <input type="hidden" name="reaction" value="DISLIKE" />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <SubmitButton
+              className={`button ${thread.dislikes?.length ? "button-danger" : "button-ghost"}`}
+              pendingLabel="Updating…"
+              aria-label={`Dislike thread, ${thread._count.dislikes} ${thread._count.dislikes === 1 ? "dislike" : "dislikes"}`}
+              aria-pressed={Boolean(thread.dislikes?.length)}
+            >
+              <ArrowDown size={16} aria-hidden /> {thread._count.dislikes}
             </SubmitButton>
           </RateLimitForm>
           <span className="button button-ghost"><MessageCircle size={16} /> {thread._count.replies}</span>
@@ -175,11 +196,30 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
                           ) : null}
                           <div className="mt-4"><Markdown>{reply.body}</Markdown></div>
                           <div className="mt-5 flex flex-wrap items-center gap-3">
-                            <RateLimitForm action={toggleReplyVote}>
+                            <RateLimitForm action={toggleReplyReaction}>
                               <input type="hidden" name="replyId" value={reply.id} />
+                              <input type="hidden" name="reaction" value="UPVOTE" />
                               <input type="hidden" name="returnTo" value={returnTo} />
-                              <SubmitButton className={`button !min-h-0 !px-2.5 !py-1.5 ${reply.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
-                                <ThumbsUp size={14} /> {reply._count.votes}
+                              <SubmitButton
+                                className={`button !min-h-0 !px-2.5 !py-1.5 ${reply.upvotes?.length ? "button-primary" : "button-ghost"}`}
+                                pendingLabel="Updating…"
+                                aria-label={`Upvote reply ${index + 1}, ${reply._count.upvotes} ${reply._count.upvotes === 1 ? "upvote" : "upvotes"}`}
+                                aria-pressed={Boolean(reply.upvotes?.length)}
+                              >
+                                <ArrowUp size={14} aria-hidden /> {reply._count.upvotes}
+                              </SubmitButton>
+                            </RateLimitForm>
+                            <RateLimitForm action={toggleReplyReaction}>
+                              <input type="hidden" name="replyId" value={reply.id} />
+                              <input type="hidden" name="reaction" value="DISLIKE" />
+                              <input type="hidden" name="returnTo" value={returnTo} />
+                              <SubmitButton
+                                className={`button !min-h-0 !px-2.5 !py-1.5 ${reply.dislikes?.length ? "button-danger" : "button-ghost"}`}
+                                pendingLabel="Updating…"
+                                aria-label={`Dislike reply ${index + 1}, ${reply._count.dislikes} ${reply._count.dislikes === 1 ? "dislike" : "dislikes"}`}
+                                aria-pressed={Boolean(reply.dislikes?.length)}
+                              >
+                                <ArrowDown size={14} aria-hidden /> {reply._count.dislikes}
                               </SubmitButton>
                             </RateLimitForm>
                             {canViewerReply ? <NestedReplyControl replyId={reply.id} authorName={reply.author.displayName} /> : null}

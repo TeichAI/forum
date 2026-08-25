@@ -14,7 +14,7 @@ vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: vi.fn(() => false) }
 import {
   createReply, createThread, deleteReply, moderateReport, reportContent,
   setContentVisibility, suspendMember, toggleBookmark, toggleFollow,
-  toggleThreadLock, toggleThreadVote,
+  toggleReplyReaction, toggleThreadLock, toggleThreadReaction,
 } from "./forum";
 import { db } from "@/lib/db";
 import { createTestCategory, createTestThread, createTestUser } from "@/test/integration-factories";
@@ -70,7 +70,7 @@ describe("forum actions against PostgreSQL", () => {
     await db.thread.update({ where: { id: existingThread.id }, data: { isLocked: true } });
     await expect(createReply(form({ threadId: existingThread.id, body: "Lock remains absolute" }))).rejects.toThrow("locked");
   });
-  it("persists a thread, normalized tags, reply, mentions, votes, bookmark, and follow", async () => {
+  it("persists a thread, normalized tags, reply, mentions, upvote, bookmark, and follow", async () => {
     const [author, participant, mentioned] = await Promise.all([
       createTestUser({ username: "author" }), createTestUser({ username: "participant" }), createTestUser({ username: "mentioned" }),
     ]);
@@ -85,11 +85,11 @@ describe("forum actions against PostgreSQL", () => {
 
     authState.user = participant;
     await createReply(form({ threadId: thread.id, body: "Replying to @mentioned" }));
-    await toggleThreadVote(form({ threadId: thread.id, returnTo: `/t/${thread.slug}` }));
+    await toggleThreadReaction(form({ threadId: thread.id, reaction: "UPVOTE", returnTo: `/t/${thread.slug}` }));
     await toggleBookmark(form({ threadId: thread.id, returnTo: `/t/${thread.slug}` }));
     await toggleFollow(form({ userId: author.id, returnTo: `/members/${author.id}` }));
     expect(await db.reply.count({ where: { threadId: thread.id } })).toBe(1);
-    expect(await db.threadVote.count({ where: { threadId: thread.id } })).toBe(1);
+    expect(await db.threadUpvote.count({ where: { threadId: thread.id } })).toBe(1);
     expect(await db.bookmark.count({ where: { threadId: thread.id } })).toBe(1);
     expect(await db.follow.count({ where: { followingId: author.id } })).toBe(1);
     expect(await db.notification.count({ where: { recipientId: author.id } })).toBe(3);
@@ -161,15 +161,37 @@ describe("forum actions against PostgreSQL", () => {
     expect(await db.moderationAction.count({ where: { moderatorId: admin.id } })).toBe(4);
   });
 
-  it("enforces compound uniqueness and cascade deletion", async () => {
-    const [author, voter] = await Promise.all([createTestUser(), createTestUser()]);
+  it("persists unique reactions, switches them exclusively, and cascades thread and reply reactions", async () => {
+    const [author, reactor, secondReactor] = await Promise.all([createTestUser(), createTestUser(), createTestUser()]);
     const category = await createTestCategory();
     const thread = await createTestThread(author.id, category.id);
-    await db.reply.create({ data: { threadId: thread.id, authorId: author.id, body: "Cascade reply" } });
-    await db.threadVote.create({ data: { threadId: thread.id, userId: voter.id } });
-    await expect(db.threadVote.create({ data: { threadId: thread.id, userId: voter.id } })).rejects.toThrow();
+    const reply = await db.reply.create({ data: { threadId: thread.id, authorId: author.id, body: "Cascade reply" } });
+
+    authState.user = reactor;
+    await toggleThreadReaction(form({ threadId: thread.id, reaction: "UPVOTE" }));
+    await toggleReplyReaction(form({ replyId: reply.id, reaction: "UPVOTE" }));
+    expect(await db.threadUpvote.count({ where: { threadId: thread.id, userId: reactor.id } })).toBe(1);
+    expect(await db.replyUpvote.count({ where: { replyId: reply.id, userId: reactor.id } })).toBe(1);
+
+    await toggleThreadReaction(form({ threadId: thread.id, reaction: "DISLIKE" }));
+    await toggleReplyReaction(form({ replyId: reply.id, reaction: "DISLIKE" }));
+    expect(await db.threadUpvote.count({ where: { threadId: thread.id, userId: reactor.id } })).toBe(0);
+    expect(await db.replyUpvote.count({ where: { replyId: reply.id, userId: reactor.id } })).toBe(0);
+    expect(await db.threadDislike.count({ where: { threadId: thread.id, userId: reactor.id } })).toBe(1);
+    expect(await db.replyDislike.count({ where: { replyId: reply.id, userId: reactor.id } })).toBe(1);
+
+    await db.threadUpvote.create({ data: { threadId: thread.id, userId: secondReactor.id } });
+    await db.replyUpvote.create({ data: { replyId: reply.id, userId: secondReactor.id } });
+    await expect(db.threadUpvote.create({ data: { threadId: thread.id, userId: secondReactor.id } })).rejects.toThrow();
+    await expect(db.threadDislike.create({ data: { threadId: thread.id, userId: reactor.id } })).rejects.toThrow();
+    await expect(db.replyUpvote.create({ data: { replyId: reply.id, userId: secondReactor.id } })).rejects.toThrow();
+    await expect(db.replyDislike.create({ data: { replyId: reply.id, userId: reactor.id } })).rejects.toThrow();
+
     await db.thread.delete({ where: { id: thread.id } });
     expect(await db.reply.count()).toBe(0);
-    expect(await db.threadVote.count()).toBe(0);
+    expect(await db.threadUpvote.count()).toBe(0);
+    expect(await db.threadDislike.count()).toBe(0);
+    expect(await db.replyUpvote.count()).toBe(0);
+    expect(await db.replyDislike.count()).toBe(0);
   });
 });

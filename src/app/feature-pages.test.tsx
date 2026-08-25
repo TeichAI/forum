@@ -22,7 +22,9 @@ vi.mock("@/components/forum/thread-card", () => ({ ThreadCard: ({ thread }: { th
 vi.mock("@/components/forum/report-form", () => ({ ReportForm: ({ targetType }: { targetType: string }) => <button>{`Report ${targetType}`}</button> }));
 vi.mock("@/components/forum/content-menu", () => ({ ContentMenu: ({ type }: { type: string }) => <button>{`Edit ${type}`}</button> }));
 vi.mock("@/components/ui/avatar", () => ({ Avatar: ({ name }: { name: string }) => <span>{`Avatar ${name}`}</span> }));
-vi.mock("@/components/ui/submit-button", () => ({ SubmitButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button> }));
+vi.mock("@/components/ui/submit-button", () => ({
+  SubmitButton: ({ children, pendingLabel, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { pendingLabel?: string }) => <button data-pending-label={pendingLabel} {...props}>{children}</button>,
+}));
 
 import MemberPage, { generateMetadata as memberMetadata } from "./members/[id]/page";
 import ModerationPage from "./moderation/page";
@@ -36,8 +38,8 @@ const admin = { ...member, id: "admin", username: "admin", displayName: "Admin",
 const thread = {
   id: "thread", slug: "topic", title: "A full discussion", body: "Thread body", status: "PUBLISHED", authorId: member.id,
   author: member, category: { id: "category", slug: "general", name: "General", color: "#123456", postingPolicy: "OPEN" }, tags: [{ tag: { id: "tag", slug: "testing", name: "Testing" } }],
-  votes: [], bookmarks: [], _count: { votes: 2, replies: 1 }, isLocked: false, createdAt: now, editedAt: null,
-  replies: [{ id: "reply", body: "Reply body", status: "PUBLISHED", parentReplyId: null, authorId: other.id, author: { ...other, role: "MODERATOR" }, votes: [], _count: { votes: 1 }, createdAt: now, editedAt: now }],
+  upvotes: [], dislikes: [], bookmarks: [], _count: { upvotes: 2, dislikes: 1, replies: 1 }, isLocked: false, createdAt: now, editedAt: null,
+  replies: [{ id: "reply", body: "Reply body", status: "PUBLISHED", parentReplyId: null, authorId: other.id, author: { ...other, role: "MODERATOR" }, upvotes: [], dislikes: [], _count: { upvotes: 1, dislikes: 2 }, createdAt: now, editedAt: now }],
 };
 
 beforeEach(() => {
@@ -61,16 +63,32 @@ describe("discussion page", () => {
     const { container } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByRole("heading", { name: "A full discussion" })).toBeInTheDocument();
     expect(screen.getByText("Thread body")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upvote thread, 2 upvotes" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Upvote thread, 2 upvotes" })).toHaveClass("button-ghost");
+    expect(screen.getByRole("button", { name: "Dislike thread, 1 dislike" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Dislike thread, 1 dislike" })).toHaveClass("button-ghost");
+    expect(screen.getByRole("button", { name: "Upvote reply 1, 1 upvote" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Dislike reply 1, 2 dislikes" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("link", { name: "Sign in to reply" })).toBeInTheDocument();
     expect(screen.queryByText("Edit thread")).not.toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("renders member ownership, saved/voted state, and reply controls", async () => {
+  it("renders member ownership, saved/reaction states, and reply controls", async () => {
     mocks.viewer.mockResolvedValue(member);
-    mocks.thread.mockResolvedValue({ ...thread, votes: [{}], bookmarks: [{}] });
+    mocks.thread.mockResolvedValue({
+      ...thread,
+      upvotes: [{}],
+      bookmarks: [{}],
+      replies: [{ ...thread.replies[0], dislikes: [{}] }],
+    });
     render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upvote thread, 2 upvotes" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Upvote thread, 2 upvotes" })).toHaveClass("button-primary");
+    expect(screen.getByRole("button", { name: "Dislike thread, 1 dislike" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Dislike reply 1, 2 dislikes" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Dislike reply 1, 2 dislikes" })).toHaveClass("button-danger");
     expect(screen.getByText("Edit thread")).toBeInTheDocument();
     expect(screen.getByText("Report THREAD")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Post reply" })).toBeInTheDocument();

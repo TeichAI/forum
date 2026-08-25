@@ -6,7 +6,7 @@ export const threadListInclude = {
   author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
   category: true,
   tags: { include: { tag: true } },
-  _count: { select: { replies: true, votes: true, bookmarks: true } },
+  _count: { select: { replies: true, upvotes: true, dislikes: true, bookmarks: true } },
 } satisfies Prisma.ThreadInclude;
 
 export async function listThreads(options: {
@@ -30,7 +30,7 @@ export async function listThreads(options: {
       sort === "new"
         ? [{ isPinned: "desc" }, { createdAt: "desc" }]
         : sort === "top"
-          ? [{ isPinned: "desc" }, { votes: { _count: "desc" } }, { bumpedAt: "desc" }]
+          ? [{ isPinned: "desc" }, { upvotes: { _count: "desc" } }, { bumpedAt: "desc" }]
           : [{ isPinned: "desc" }, { bumpedAt: "desc" }],
     take,
   });
