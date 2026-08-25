@@ -10,10 +10,11 @@ vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea
 vi.mock("@/components/ui/editor-dialog", () => ({ EditorDialog: ({ title, children }: { title: string; children: React.ReactNode }) => <section aria-label={title}>{children}</section> }));
 vi.mock("@/components/ui/submit-button", () => ({ SubmitButton: ({ children, pendingLabel, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { pendingLabel?: string }) => <button data-pending-label={pendingLabel} {...props}>{children}</button> }));
 vi.mock("@/components/forum/create-space-dialog", () => ({ CreateSpaceDialog: () => <button>Add space</button> }));
+vi.mock("@/lib/moderation", () => ({ getModerationSettings: async () => ({ reportReasons: ["Spam", "Other"] }) }));
 
 const category = {
   id: "category", name: "General", slug: "general", description: "Talk", color: "#123456", icon: "hash", position: 1,
-  postingPolicy: "OPEN" as const, createdAt: new Date(), updatedAt: new Date(), _count: { threads: 7 },
+  postingPolicy: "OPEN" as const, archivedAt: null, createdAt: new Date(), updatedAt: new Date(), _count: { threads: 7 },
 };
 const thread = {
   id: "thread", slug: "hello", title: "Pinned hello", body: "A **useful** body", status: "PUBLISHED", isPinned: true,
@@ -57,7 +58,7 @@ describe("forum display components", () => {
   });
 
   it("renders an accessible report form with its target context", async () => {
-    const { container } = render(<ReportForm targetType="THREAD" targetId="thread" returnTo="/t/hello" />);
+    const { container } = render(await ReportForm({ targetType: "THREAD", targetId: "thread", returnTo: "/t/hello" }));
     expect(screen.getByLabelText("Reason")).toHaveValue("Spam");
     expect(screen.getByLabelText("Details")).toHaveAttribute("maxlength", "1000");
     expect(container.querySelector('input[name="targetType"]')).toHaveValue("THREAD");

@@ -4,7 +4,7 @@ import { ThreadCard } from "@/components/forum/thread-card";
 import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { listThreads } from "@/lib/queries";
+import { canModerate, listThreads } from "@/lib/queries";
 import { canStartDiscussion } from "@/lib/space-posting-permissions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
     db.category.findUnique({ where: { slug } }),
     getViewer(),
   ]);
-  if (!category) notFound();
+  if (!category || (category.archivedAt && !canModerate(viewer))) notFound();
 
   const threads = await listThreads({ categoryId: category.id });
   const postingPolicyLabel = category.postingPolicy === "ANNOUNCEMENTS"
@@ -29,9 +29,9 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
     : category.postingPolicy === "ADMIN_ONLY"
       ? "Admin only"
       : null;
-  const canViewerStart = viewer
+  const canViewerStart = !category.archivedAt && (viewer
     ? canStartDiscussion(viewer.role, category.postingPolicy)
-    : category.postingPolicy === "OPEN";
+    : category.postingPolicy === "OPEN");
   const restrictionNotice = category.postingPolicy === "ANNOUNCEMENTS"
     ? "Only admins can start discussions here. Everyone can still reply."
     : "Only admins can start discussions or reply here.";
@@ -41,14 +41,14 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
       <div className="card flex flex-wrap items-start gap-5 p-6 sm:p-8">
         <span className="mt-1 h-12 w-2 rounded-full" style={{ background: category.color }} />
         <div className="min-w-0 flex-1">
-          <div className="eyebrow">Community space</div>
+          <div className="eyebrow">{category.archivedAt ? "Archived staff preview" : "Community space"}</div>
           <div className="mt-1 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-black">{category.name}</h1>
             {postingPolicyLabel ? <span className="pill">{postingPolicyLabel}</span> : null}
           </div>
           <p className="mt-2 muted">{category.description}</p>
         </div>
-        {canViewerStart ? (
+        {category.archivedAt ? <span className="pill">Archived</span> : canViewerStart ? (
           <NewThreadTrigger categoryId={category.id} className="button button-primary ml-auto">
             New thread
           </NewThreadTrigger>

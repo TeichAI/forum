@@ -32,7 +32,7 @@ export async function Header({ viewer, accessMode = "public" }: { viewer: Header
             <NewThreadTrigger className="button button-primary"><Plus size={16} /><span className="desktop-only">New thread</span></NewThreadTrigger>
             <Link href="/bookmarks" className="button button-ghost !p-2.5" aria-label="Bookmarks"><Bookmark size={18} /></Link>
             <Link href="/messages" className="button button-ghost !p-2.5" aria-label="Messages"><MessageCircle size={18} /></Link>
-            {(viewer.role === "MODERATOR" || viewer.role === "ADMIN") && <Link href="/moderation" className="button button-ghost !p-2.5" aria-label="Moderation"><ShieldCheck size={18} /></Link>}
+            {(viewer.role === "MODERATOR" || viewer.role === "ADMIN") && <Link href="/staff" className="button button-ghost !p-2.5" aria-label="Staff console"><ShieldCheck size={18} /></Link>}
             <Link href="/notifications" className="button button-ghost relative !p-2.5" aria-label={`${unread} unread notifications`}>
               <Bell size={18} />{unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full" style={{ background: "var(--danger)" }} />}
             </Link>

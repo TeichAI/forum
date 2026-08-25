@@ -129,7 +129,7 @@ describe("forum actions against PostgreSQL", () => {
     await setContentVisibility(form({ targetType: "THREAD", targetId: thread.id, hide: "true", reason: "Confirmed report" }));
     await suspendMember(form({ userId: author.id, days: "3", reason: "Repeated abuse" }));
 
-    expect(await db.report.findUnique({ where: { id: report.id } })).toEqual(expect.objectContaining({ status: "RESOLVED", reviewedById: admin.id }));
+    expect(await db.moderationCase.findUnique({ where: { id: report.caseId } })).toEqual(expect.objectContaining({ status: "RESOLVED", assignedToId: admin.id }));
     expect(await db.thread.findUnique({ where: { id: thread.id } })).toEqual(expect.objectContaining({ status: "HIDDEN", isLocked: true }));
     expect(await db.user.findUnique({ where: { id: author.id } })).toEqual(expect.objectContaining({ status: "SUSPENDED" }));
     expect(await db.moderationAction.count({ where: { moderatorId: admin.id } })).toBe(4);

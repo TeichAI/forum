@@ -36,8 +36,16 @@ enum NotificationType {
 
 enum ReportStatus {
   OPEN
+  IN_REVIEW
   RESOLVED
   DISMISSED
+}
+
+enum ReportPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
 
 enum ReportTargetType {
@@ -45,6 +53,10 @@ enum ReportTargetType {
   REPLY
   USER
   MESSAGE
+  SPACE
+  TAG
+  SETTINGS
+  REPORT
 }
 
 enum ModerationActionType {
@@ -56,6 +68,21 @@ enum ModerationActionType {
   UNSUSPEND
   RESOLVE_REPORT
   DISMISS_REPORT
+  REOPEN_REPORT
+  CLAIM_REPORT
+  UNCLAIM_REPORT
+  SET_PRIORITY
+  PIN
+  UNPIN
+  ADD_NOTE
+  CREATE_SPACE
+  UPDATE_SPACE
+  ARCHIVE_SPACE
+  RESTORE_SPACE
+  REORDER_SPACE
+  RENAME_TAG
+  MERGE_TAG
+  UPDATE_MODERATION_SETTINGS
 }
 
 enum AttachmentContext {
@@ -100,9 +127,11 @@ model User {
   notifications       Notification[]     @relation("NotificationRecipient")
   notificationActions Notification[]     @relation("NotificationActor")
   reports             Report[]           @relation("ReportReporter")
-  reviewedReports     Report[]           @relation("ReportReviewer")
+  assignedCases       ModerationCase[]   @relation("CaseAssignee")
   moderationActions   ModerationAction[] @relation("Moderator")
   moderationReceived  ModerationAction[] @relation("ModeratedUser")
+  authoredStaffNotes  StaffNote[]        @relation("StaffNoteAuthor")
+  receivedStaffNotes  StaffNote[]        @relation("StaffNoteUser")
   blocksInitiated     Block[]            @relation("Blocker")
   blocksReceived      Block[]            @relation("Blocked")
   attachments         Attachment[]
@@ -122,6 +151,7 @@ model Category {
   postingPolicy SpacePostingPolicy @default(OPEN)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+  archivedAt    DateTime?
   threads       Thread[]
 
   @@index([position])
@@ -133,6 +163,16 @@ model Tag {
   slug      String      @unique
   createdAt DateTime    @default(now())
   threads   ThreadTag[]
+  aliases   TagAlias[]
+}
+
+model TagAlias {
+  slug      String   @id
+  tagId     String
+  createdAt DateTime @default(now())
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([tagId])
 }
 
 model Thread {
@@ -274,61 +314,108 @@ model Message {
 }
 
 model Notification {
-  id             String           @id @default(cuid())
-  type           NotificationType
-  recipientId    String
-  actorId        String?
-  threadId       String?
-  replyId        String?
-  conversationId String?
-  messageId      String?
-  readAt         DateTime?
-  createdAt      DateTime         @default(now())
-  recipient      User             @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
-  actor          User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
-  thread         Thread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  reply          Reply?           @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  message        Message?         @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(cuid())
+  type               NotificationType
+  recipientId        String
+  actorId            String?
+  threadId           String?
+  replyId            String?
+  conversationId     String?
+  messageId          String?
+  moderationActionId String?
+  readAt             DateTime?
+  createdAt          DateTime          @default(now())
+  recipient          User              @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor              User?             @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  thread             Thread?           @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  reply              Reply?            @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  conversation       Conversation?     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message            Message?          @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  moderationAction   ModerationAction? @relation(fields: [moderationActionId], references: [id], onDelete: SetNull)
 
   @@index([recipientId, readAt, createdAt(sort: Desc)])
 }
 
 model Report {
-  id           String           @id @default(cuid())
-  targetType   ReportTargetType
-  targetId     String
-  reason       String
-  details      String           @default("")
-  status       ReportStatus     @default(OPEN)
-  reporterId   String
-  reviewedById String?
-  resolution   String?
-  createdAt    DateTime         @default(now())
-  reviewedAt   DateTime?
-  reporter     User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  reviewedBy   User?            @relation("ReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  id         String           @id @default(cuid())
+  caseId     String
+  targetType ReportTargetType
+  targetId   String
+  reason     String
+  details    String           @default("")
+  reporterId String
+  createdAt  DateTime         @default(now())
+  reporter   User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  case       ModerationCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
   @@unique([reporterId, targetType, targetId])
-  @@index([status, createdAt])
+  @@index([caseId, createdAt])
   @@index([targetType, targetId])
 }
 
+model ModerationCase {
+  id           String             @id @default(cuid())
+  targetType   ReportTargetType
+  targetId     String
+  status       ReportStatus       @default(OPEN)
+  priority     ReportPriority     @default(NORMAL)
+  assignedToId String?
+  resolution   String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  closedAt     DateTime?
+  assignedTo   User?              @relation("CaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  reports      Report[]
+  notes        StaffNote[]
+  actions      ModerationAction[]
+
+  @@index([status, priority, createdAt])
+  @@index([assignedToId, status])
+  @@index([targetType, targetId, status])
+}
+
+model StaffNote {
+  id        String          @id @default(cuid())
+  body      String
+  authorId  String
+  caseId    String?
+  userId    String?
+  createdAt DateTime        @default(now())
+  author    User            @relation("StaffNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  case      ModerationCase? @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user      User?           @relation("StaffNoteUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ModerationSettings {
+  id                      String   @id @default("default")
+  reportReasons           String[] @default(["Spam", "Harassment", "Unsafe content", "Off topic", "Other"])
+  suspensionDurationsDays Int[]    @default([1, 3, 7, 30, 90])
+  actionReasons           String[] @default(["Spam", "Harassment", "Unsafe content", "Off topic", "Repeated violations", "Other"])
+  updatedAt               DateTime @updatedAt
+}
+
 model ModerationAction {
-  id          String               @id @default(cuid())
-  type        ModerationActionType
-  moderatorId String
-  userId      String?
-  targetType  ReportTargetType
-  targetId    String
-  reason      String
-  metadata    Json?
-  createdAt   DateTime             @default(now())
-  moderator   User                 @relation("Moderator", fields: [moderatorId], references: [id], onDelete: Restrict)
-  user        User?                @relation("ModeratedUser", fields: [userId], references: [id], onDelete: SetNull)
+  id            String               @id @default(cuid())
+  type          ModerationActionType
+  moderatorId   String
+  userId        String?
+  caseId        String?
+  targetType    ReportTargetType
+  targetId      String
+  reason        String
+  metadata      Json?
+  createdAt     DateTime             @default(now())
+  moderator     User                 @relation("Moderator", fields: [moderatorId], references: [id], onDelete: Restrict)
+  user          User?                @relation("ModeratedUser", fields: [userId], references: [id], onDelete: SetNull)
+  case          ModerationCase?      @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  notifications Notification[]
 
   @@index([targetType, targetId, createdAt(sort: Desc)])
   @@index([moderatorId, createdAt(sort: Desc)])
+  @@index([caseId, createdAt(sort: Desc)])
 }
 
 model Block {

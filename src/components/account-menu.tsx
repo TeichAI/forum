@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { LogOut, Settings, SlidersHorizontal } from "lucide-react";
+import { LogOut, Settings, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import type { ForumRole } from "@/lib/roles";
@@ -118,10 +118,10 @@ export function AccountMenu({ id, displayName, username, imageUrl, role }: Accou
               <Settings size={17} aria-hidden="true" />
               Account settings
             </Link>
-            {role === "ADMIN" && (
-              <Link href="/settings/spaces" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
-                <SlidersHorizontal size={17} aria-hidden="true" />
-                Space settings
+            {(role === "MODERATOR" || role === "ADMIN") && (
+              <Link href="/staff" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
+                <ShieldCheck size={17} aria-hidden="true" />
+                Staff console
               </Link>
             )}
             <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]" style={{ color: "var(--danger)" }} disabled={signingOut} onClick={handleSignOut}>

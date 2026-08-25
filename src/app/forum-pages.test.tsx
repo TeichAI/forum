@@ -2,12 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  category: vi.fn(), tag: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(),
+  category: vi.fn(), tag: vi.fn(), tagAlias: vi.fn(), bookmarks: vi.fn(), conversations: vi.fn(),
   viewer: vi.fn(), requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   category: { findUnique: mocks.category },
-  tag: { findUnique: mocks.tag }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
+  tag: { findUnique: mocks.tag }, tagAlias: { findUnique: mocks.tagAlias }, bookmark: { findMany: mocks.bookmarks }, conversation: { findMany: mocks.conversations },
 } }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
@@ -37,6 +37,7 @@ beforeEach(() => {
   mocks.listThreads.mockResolvedValue([]);
   mocks.searchThreads.mockResolvedValue([]);
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
+  mocks.tagAlias.mockResolvedValue(null);
   mocks.mode.mockReturnValue(true);
 });
 

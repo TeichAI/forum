@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getVerifiedUserRole, requireModerator, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { canModerateRole } from "@/lib/moderation";
 import { canComment, canStartDiscussion } from "@/lib/space-posting-permissions";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils";
@@ -39,8 +40,8 @@ export async function createThread(formData: FormData) {
   const rawTags = z.string().max(180).catch("").parse(formData.get("tags") ?? "");
   const tags = [...new Set(rawTags.split(",").map((tag) => slugify(tag.trim())).filter(Boolean))].slice(0, 5);
 
-  const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true, postingPolicy: true } });
-  if (!category) throw new Error("Category not found");
+  const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true, postingPolicy: true, archivedAt: true } });
+  if (!category || category.archivedAt) throw new Error("Category not found");
   if (!canStartDiscussion(user.role, category.postingPolicy)) {
     throw new Error("You do not have permission to start a discussion in this space");
   }
@@ -160,7 +161,7 @@ export async function updateThread(formData: FormData) {
   const title = titleSchema.parse(formData.get("title"));
   const body = bodySchema.parse(formData.get("body"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
-  if (!thread || (thread.authorId !== user.id && user.role === "MEMBER")) throw new Error("You cannot edit this discussion");
+  if (!thread || thread.authorId !== user.id) throw new Error("You cannot edit this discussion");
   await db.thread.update({ where: { id: threadId }, data: { title, body, editedAt: new Date() } });
   await claimAttachments(body, user.id, "THREAD", threadId);
   revalidatePath(`/t/${thread.slug}`);
@@ -171,7 +172,7 @@ export async function deleteThread(formData: FormData) {
   const user = await requireUser();
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
-  if (!thread || (thread.authorId !== user.id && user.role === "MEMBER")) throw new Error("You cannot delete this discussion");
+  if (!thread || thread.authorId !== user.id) throw new Error("You cannot delete this discussion");
   await db.thread.update({ where: { id: threadId }, data: { status: "DELETED", deletedAt: new Date() } });
   revalidatePath("/");
   redirect("/");
@@ -182,7 +183,7 @@ export async function updateReply(formData: FormData) {
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const body = bodySchema.parse(formData.get("body"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
-  if (!reply || (reply.authorId !== user.id && user.role === "MEMBER")) throw new Error("You cannot edit this reply");
+  if (!reply || reply.authorId !== user.id) throw new Error("You cannot edit this reply");
   await db.reply.update({ where: { id: replyId }, data: { body, editedAt: new Date() } });
   await claimAttachments(body, user.id, "REPLY", replyId);
   revalidatePath(`/t/${reply.thread.slug}`);
@@ -192,7 +193,7 @@ export async function deleteReply(formData: FormData) {
   const user = await requireUser();
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
-  if (!reply || (reply.authorId !== user.id && user.role === "MEMBER")) throw new Error("You cannot delete this reply");
+  if (!reply || reply.authorId !== user.id) throw new Error("You cannot delete this reply");
   await db.reply.update({ where: { id: replyId }, data: { status: "DELETED", deletedAt: new Date() } });
   revalidatePath(`/t/${reply.thread.slug}`);
 }
@@ -243,7 +244,7 @@ export async function blockMember(formData: FormData) {
 
 export async function reportContent(formData: FormData) {
   const user = await requireUser();
-  const targetType = z.nativeEnum(ReportTargetType).parse(formData.get("targetType"));
+  const targetType = z.enum([ReportTargetType.THREAD, ReportTargetType.REPLY, ReportTargetType.USER, ReportTargetType.MESSAGE]).parse(formData.get("targetType"));
   const targetId = z.string().cuid().parse(formData.get("targetId"));
   const reason = z.string().trim().min(3).max(80).parse(formData.get("reason"));
   const details = z.string().trim().max(1000).parse(formData.get("details") ?? "");
@@ -255,10 +256,17 @@ export async function reportContent(formData: FormData) {
         ? Boolean(await db.user.findUnique({ where: { id: targetId }, select: { id: true } }))
         : Boolean(await db.message.findUnique({ where: { id: targetId, conversation: { OR: [{ memberOneId: user.id }, { memberTwoId: user.id }] } }, select: { id: true } }));
   if (!targetExists) throw new Error("The reported content does not exist or is not visible to you");
-  await db.report.upsert({
-    where: { reporterId_targetType_targetId: { reporterId: user.id, targetType, targetId } },
-    update: { reason, details, status: "OPEN", reviewedAt: null, reviewedById: null },
-    create: { reporterId: user.id, targetType, targetId, reason, details },
+  const activeCase = await db.moderationCase.findFirst({
+    where: { targetType, targetId, status: { in: ["OPEN", "IN_REVIEW"] } },
+    orderBy: { createdAt: "asc" },
+  });
+  await db.$transaction(async (tx) => {
+    const reportCase = activeCase ?? await tx.moderationCase.create({ data: { targetType, targetId } });
+    await tx.report.upsert({
+      where: { reporterId_targetType_targetId: { reporterId: user.id, targetType, targetId } },
+      update: { reason, details, caseId: reportCase.id, createdAt: new Date() },
+      create: { reporterId: user.id, targetType, targetId, reason, details, caseId: reportCase.id },
+    });
   });
   revalidatePath(safeReturnPath(formData.get("returnTo")));
 }
@@ -274,14 +282,15 @@ export async function moderateReport(formData: FormData) {
   const reportId = z.string().cuid().parse(formData.get("reportId"));
   const decision = z.enum(["RESOLVED", "DISMISSED"]).parse(formData.get("decision"));
   const resolution = z.string().trim().min(2).max(500).parse(formData.get("resolution"));
-  const report = await db.report.findUnique({ where: { id: reportId } });
+  const report = await db.report.findUnique({ where: { id: reportId }, include: { case: true } });
   if (!report) throw new Error("Report not found");
   await db.$transaction([
-    db.report.update({ where: { id: reportId }, data: { status: decision, resolution, reviewedAt: new Date(), reviewedById: moderator.id } }),
+    db.moderationCase.update({ where: { id: report.caseId }, data: { status: decision, resolution, closedAt: new Date(), assignedToId: report.case.assignedToId ?? moderator.id } }),
     db.moderationAction.create({
       data: {
         type: decision === "RESOLVED" ? "RESOLVE_REPORT" : "DISMISS_REPORT",
         moderatorId: moderator.id,
+        caseId: report.caseId,
         targetType: report.targetType,
         targetId: report.targetId,
         reason: resolution,
@@ -297,10 +306,11 @@ export async function toggleThreadLock(formData: FormData) {
   const thread = await db.thread.findUnique({ where: { id: threadId } });
   if (!thread) throw new Error("Thread not found");
   const lock = !thread.isLocked;
-  await db.$transaction([
-    db.thread.update({ where: { id: threadId }, data: { isLocked: lock } }),
-    db.moderationAction.create({ data: { type: lock ? "LOCK" : "UNLOCK", moderatorId: moderator.id, targetType: "THREAD", targetId: threadId, reason: lock ? "Thread locked" : "Thread unlocked" } }),
-  ]);
+  await db.$transaction(async (tx) => {
+    await tx.thread.update({ where: { id: threadId }, data: { isLocked: lock } });
+    const action = await tx.moderationAction.create({ data: { type: lock ? "LOCK" : "UNLOCK", moderatorId: moderator.id, userId: thread.authorId, targetType: "THREAD", targetId: threadId, reason: lock ? "Thread locked" : "Thread unlocked" } });
+    await tx.notification.create({ data: { type: "MODERATION", recipientId: thread.authorId, actorId: moderator.id, threadId, moderationActionId: action.id } });
+  });
   revalidatePath(`/t/${thread.slug}`);
 }
 
@@ -310,9 +320,16 @@ export async function setContentVisibility(formData: FormData) {
   const targetId = z.string().cuid().parse(formData.get("targetId"));
   const hide = formData.get("hide") === "true";
   const reason = z.string().trim().min(2).max(500).parse(formData.get("reason") ?? "Moderation action");
-  if (targetType === "THREAD") await db.thread.update({ where: { id: targetId }, data: { status: hide ? "HIDDEN" : "PUBLISHED" } });
-  else await db.reply.update({ where: { id: targetId }, data: { status: hide ? "HIDDEN" : "PUBLISHED" } });
-  await db.moderationAction.create({ data: { type: hide ? "HIDE" : "RESTORE", moderatorId: moderator.id, targetType, targetId, reason } });
+  const target = targetType === "THREAD"
+    ? await db.thread.findUnique({ where: { id: targetId }, select: { authorId: true } }).then((item) => item ? { ...item, threadId: targetId } : null)
+    : await db.reply.findUnique({ where: { id: targetId }, select: { authorId: true, threadId: true } });
+  if (!target) throw new Error("Content not found");
+  await db.$transaction(async (tx) => {
+    if (targetType === "THREAD") await tx.thread.update({ where: { id: targetId }, data: { status: hide ? "HIDDEN" : "PUBLISHED" } });
+    else await tx.reply.update({ where: { id: targetId }, data: { status: hide ? "HIDDEN" : "PUBLISHED" } });
+    const action = await tx.moderationAction.create({ data: { type: hide ? "HIDE" : "RESTORE", moderatorId: moderator.id, userId: target.authorId, targetType, targetId, reason } });
+    await tx.notification.create({ data: { type: "MODERATION", recipientId: target.authorId, actorId: moderator.id, threadId: target.threadId, replyId: targetType === "REPLY" ? targetId : undefined, moderationActionId: action.id } });
+  });
   revalidatePath("/moderation");
 }
 
@@ -324,12 +341,12 @@ export async function suspendMember(formData: FormData) {
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) throw new Error("This member cannot be suspended");
   const targetRole = await getVerifiedUserRole(target);
-  if (!targetRole || targetRole === "ADMIN") throw new Error("This member cannot be suspended");
+  if (!targetRole || !canModerateRole(moderator.role, targetRole)) throw new Error("This member cannot be suspended");
   const until = new Date(Date.now() + days * 86_400_000);
-  await db.$transaction([
-    db.user.update({ where: { id: userId }, data: { status: "SUSPENDED", suspendedUntil: until, suspensionReason: reason } }),
-    db.moderationAction.create({ data: { type: "SUSPEND", moderatorId: moderator.id, userId, targetType: "USER", targetId: userId, reason, metadata: { until: until.toISOString() } } }),
-    db.notification.create({ data: { type: NotificationType.MODERATION, recipientId: userId, actorId: moderator.id } }),
-  ]);
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { status: "SUSPENDED", suspendedUntil: until, suspensionReason: reason } });
+    const action = await tx.moderationAction.create({ data: { type: "SUSPEND", moderatorId: moderator.id, userId, targetType: "USER", targetId: userId, reason, metadata: { until: until.toISOString() } } });
+    await tx.notification.create({ data: { type: NotificationType.MODERATION, recipientId: userId, actorId: moderator.id, moderationActionId: action.id } });
+  });
   revalidatePath("/moderation");
 }

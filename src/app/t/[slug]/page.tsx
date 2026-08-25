@@ -50,7 +50,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
       },
     },
   });
-  if (!thread || (thread.status !== "PUBLISHED" && !canModerate(viewer))) notFound();
+  if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt) && !canModerate(viewer))) notFound();
 
   const returnTo = `/t/${thread.slug}`;
   const postingPolicyLabel = thread.category.postingPolicy === "ANNOUNCEMENTS"
@@ -114,7 +114,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
             </button>
           </form>
           <div className="ml-auto flex items-center gap-3">
-            {viewer && (viewer.id === thread.authorId || canModerate(viewer)) ? (
+            {viewer?.id === thread.authorId ? (
               <ContentMenu type="thread" id={thread.id} title={thread.title} body={thread.body} />
             ) : null}
             {viewer ? <ReportForm targetType="THREAD" targetId={thread.id} returnTo={returnTo} /> : null}
@@ -157,7 +157,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
                         <ThumbsUp size={14} /> {reply._count.votes}
                       </button>
                     </form>
-                    {viewer && (viewer.id === reply.authorId || canModerate(viewer)) ? (
+                    {viewer?.id === reply.authorId ? (
                       <ContentMenu type="reply" id={reply.id} body={reply.body} />
                     ) : null}
                     {viewer ? <ReportForm targetType="REPLY" targetId={reply.id} returnTo={returnTo} /> : null}
@@ -170,7 +170,9 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
       </section>
 
       <section className="card mt-7 p-5 sm:p-7">
-        {thread.isLocked ? (
+        {thread.category.archivedAt ? (
+          <div className="flex items-center gap-2 font-bold muted"><Lock size={18} /> This space is archived. Staff may preview it, but posting is disabled.</div>
+        ) : thread.isLocked ? (
           <div className="flex items-center gap-2 font-bold muted">
             <Lock size={18} /> This discussion is locked.
           </div>

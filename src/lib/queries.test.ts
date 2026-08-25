@@ -16,7 +16,7 @@ describe("thread queries", () => {
   ] as const)("builds the %s thread ordering", async (sort, orderBy) => {
     await listThreads({ sort, categoryId: "category", tagId: "tag", authorId: "author", take: 12 });
     expect(findMany).toHaveBeenCalledWith({
-      where: { status: "PUBLISHED", categoryId: "category", authorId: "author", tags: { some: { tagId: "tag" } } },
+      where: { status: "PUBLISHED", category: { archivedAt: null }, categoryId: "category", authorId: "author", tags: { some: { tagId: "tag" } } },
       include: threadListInclude,
       orderBy,
       take: 12,
@@ -26,7 +26,7 @@ describe("thread queries", () => {
   it("uses safe defaults and omits the tag relation filter", async () => {
     await listThreads();
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { status: "PUBLISHED", categoryId: undefined, authorId: undefined, tags: undefined }, take: 30,
+      where: { status: "PUBLISHED", category: { archivedAt: null }, categoryId: undefined, authorId: undefined, tags: undefined }, take: 30,
     }));
   });
 

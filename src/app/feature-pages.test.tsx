@@ -3,12 +3,12 @@ import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  viewer: vi.fn(), requireUser: vi.fn(), requireModerator: vi.fn(), notFound: vi.fn(), listThreads: vi.fn(),
+  viewer: vi.fn(), requireUser: vi.fn(), requireModerator: vi.fn(), notFound: vi.fn(), redirect: vi.fn(), listThreads: vi.fn(),
   thread: vi.fn(), user: vi.fn(), conversation: vi.fn(), transaction: vi.fn(), notifications: vi.fn(), reports: vi.fn(), actions: vi.fn(),
   messageUpdate: vi.fn(), notificationUpdate: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser, requireModerator: mocks.requireModerator }));
-vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
+vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
 vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, canModerate: (user: { role?: string } | null) => user?.role === "MODERATOR" || user?.role === "ADMIN" }));
 vi.mock("@/lib/db", () => ({ db: {
   thread: { findUnique: mocks.thread }, user: { findUnique: mocks.user }, conversation: { findUnique: mocks.conversation },
@@ -43,6 +43,7 @@ const thread = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
+  mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.listThreads.mockResolvedValue([]);
   mocks.transaction.mockResolvedValue([]);
   mocks.messageUpdate.mockReturnValue(Promise.resolve({ count: 0 }));
@@ -83,7 +84,7 @@ describe("discussion page", () => {
     render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByText("This discussion is locked.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unlock" })).toBeInTheDocument();
-    expect(screen.getByText("Edit reply")).toBeInTheDocument();
+    expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
   });
 
   it("replaces replies with an admin-only notice while keeping thread locks absolute", async () => {
@@ -220,25 +221,9 @@ describe("notification and moderation pages", () => {
     expect(screen.queryByText(/Mark all read/)).not.toBeInTheDocument();
   });
 
-  it("renders report-specific moderation controls and audit history", async () => {
+  it("redirects the legacy moderation page into the staff console", async () => {
     mocks.requireModerator.mockResolvedValue(admin);
-    mocks.reports.mockResolvedValue([
-      { id: "thread-report", targetType: "THREAD", targetId: "thread", reason: "Spam", details: "Details", reporter: other, createdAt: now },
-      { id: "user-report", targetType: "USER", targetId: "other", reason: "Abuse", details: "", reporter: member, createdAt: now },
-    ]);
-    mocks.actions.mockResolvedValue([{ id: "action", type: "RESOLVE_REPORT", targetType: "THREAD", moderator: admin, createdAt: now }]);
-    render(await ModerationPage());
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Hide reported content" })).toBeInTheDocument();
-    expect(screen.getByText("Suspend this member")).toBeInTheDocument();
-    expect(screen.getByText(/resolve report/i)).toBeInTheDocument();
-  });
-
-  it("renders empty moderation queues and audit logs", async () => {
-    mocks.reports.mockResolvedValue([]);
-    mocks.actions.mockResolvedValue([]);
-    render(await ModerationPage());
-    expect(screen.getByText("No open reports.")).toBeInTheDocument();
-    expect(screen.getByText("No actions recorded.")).toBeInTheDocument();
+    await expect(ModerationPage()).rejects.toThrow("redirect:/staff/reports");
+    expect(mocks.requireModerator).toHaveBeenCalledOnce();
   });
 });

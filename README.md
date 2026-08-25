@@ -66,9 +66,10 @@ The test suite is split into deterministic layers:
 - `npm run test:critical:coverage` enforces 95% lines/statements/functions and 90% branches across authentication, server actions, queries, the request proxy, and API routes.
 - `npm run test:integration` starts an ephemeral PostgreSQL 17 service on port 5433, applies migrations, and runs the serial Prisma integration suite.
 - `npm run test:e2e:features` runs the isolated Chromium forum journeys on port 3100 with seeded local identities.
+- `npm run test:e2e:staff` runs the isolated Chromium staff-console journeys on port 3150 with seeded member, moderator, and administrator identities.
 - `npm run test:e2e:auth` runs the separate live-Clerk development-instance suite on port 3200 and requires test Clerk keys in `.env.local`.
-- `npm run test:verify` runs the deterministic local quality gate; `npm run test:verify:external` also runs the live-Clerk suite.
+- `npm run test:verify` runs the deterministic local quality gate, including both isolated browser suites; `npm run test:verify:external` also runs the live-Clerk suite.
 
-Integration and feature tests refuse to reset a database whose name does not contain `test`. Set `TEST_DATABASE_URL` to use an existing dedicated test database, `TEST_POSTGRES_PORT` to change the disposable Compose service port, or `KEEP_TEST_DATABASE=1` to leave that service running for troubleshooting. Feature sessions are HMAC-signed and are accepted only with explicit E2E mode, a 32-character secret, and a non-production server.
+Integration and isolated browser tests refuse to reset a database whose name does not contain `test`. Set `TEST_DATABASE_URL` to use an existing dedicated test database, `TEST_POSTGRES_PORT` to change the disposable Compose service port, or `KEEP_TEST_DATABASE=1` to leave that service running for troubleshooting. Local browser sessions are HMAC-signed and are accepted only with explicit E2E mode, a 32-character secret, and a non-production server.
 
 Playwright keeps traces, screenshots, and videos only for failed tests under the ignored `test-results` and `playwright-report` directories. UploadThing behavior is exercised through local contract tests; no live UploadThing credentials are required.

@@ -26,6 +26,7 @@ it("publishes site metadata and wraps normal rendering with Clerk", async () => 
   expect(result.props).toEqual(expect.objectContaining({ signInUrl: "/sign-in", signUpUrl: "/sign-up", waitlistUrl: "/waitlist" }));
   expect(metadata.description).toMatch(/community space/);
   expect(mocks.categories).toHaveBeenCalledWith({
+    where: { archivedAt: null },
     orderBy: { position: "asc" },
     select: { id: true, name: true, postingPolicy: true },
   });
@@ -39,6 +40,7 @@ it("loads serializable composer data for members and omits Clerk only in validat
   const result = await RootLayout({ children: <p>Page</p> });
   expect(result.type).toBe("html");
   expect(mocks.categories).toHaveBeenCalledWith({
+    where: { archivedAt: null },
     orderBy: { position: "asc" },
     select: { id: true, name: true, postingPolicy: true },
   });

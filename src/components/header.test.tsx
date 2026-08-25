@@ -35,8 +35,8 @@ describe("Header", () => {
     expect(screen.getByRole("button", { name: "New thread" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "3 unread notifications" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Bookmarks" })).toBeInTheDocument();
-    if (role === "MEMBER") expect(screen.queryByRole("link", { name: "Moderation" })).not.toBeInTheDocument();
-    else expect(screen.getByRole("link", { name: "Moderation" })).toBeInTheDocument();
+    if (role === "MEMBER") expect(screen.queryByRole("link", { name: "Staff console" })).not.toBeInTheDocument();
+    else expect(screen.getByRole("link", { name: "Staff console" })).toHaveAttribute("href", "/staff");
     expect(screen.getByRole("button", { name: "Custom account" })).toBeInTheDocument();
     expect(mocks.accountMenu).toHaveBeenCalledWith({ id: "user", displayName: "Owen Example", username: "owen", imageUrl: "https://img.clerk.com/avatar.png", role });
   });

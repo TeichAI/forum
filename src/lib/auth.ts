@@ -72,8 +72,15 @@ export async function getViewer() {
 }
 
 export async function requireUser() {
-  const user = await syncCurrentUser();
+  let user = await syncCurrentUser();
   if (!user) redirect("/sign-in");
+  if (user.status === "SUSPENDED" && user.suspendedUntil && user.suspendedUntil <= new Date()) {
+    const restored = await db.user.update({
+      where: { id: user.id },
+      data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null },
+    });
+    user = { ...restored, role: user.role };
+  }
   if (user.status !== "ACTIVE" || (user.suspendedUntil && user.suspendedUntil > new Date())) {
     redirect("/suspended");
   }

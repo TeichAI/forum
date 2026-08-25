@@ -60,13 +60,13 @@ describe("home page", () => {
     expect(screen.queryByRole("button", { name: /Start a discussion/ })).not.toBeInTheDocument();
     expect(mocks.countUsers).not.toHaveBeenCalled();
     expect(mocks.listThreads).toHaveBeenCalledWith({ sort: "new" });
-    expect(mocks.categoryList).toHaveBeenCalledWith(expect.objectContaining({ canCreateSpace: false }));
+    expect(mocks.categoryList).toHaveBeenCalledWith({ categories: expect.any(Array) });
   });
 
-  it("allows only administrators to create spaces from the sidebar", async () => {
+  it("links administrators to the dedicated space console", async () => {
     mocks.getViewer.mockResolvedValue({ displayName: "Pond Admin", role: "ADMIN" });
     render(await Home({ searchParams: Promise.resolve({}) }));
-    expect(mocks.categoryList).toHaveBeenCalledWith(expect.objectContaining({ canCreateSpace: true }));
+    expect(screen.getByRole("link", { name: "Manage spaces" })).toHaveAttribute("href", "/staff/spaces");
     expect(screen.queryByLabelText("Administrator")).not.toBeInTheDocument();
   });
 });

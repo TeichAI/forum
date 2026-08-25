@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     message: { create: method(), findUnique: method() },
     block: { findFirst: method(), upsert: method() },
     report: { findUnique: method(), upsert: method(), update: method() },
+    moderationCase: { findFirst: method(), create: method(), update: method() },
     moderationAction: { create: method() },
     $transaction: vi.fn(),
   };
@@ -74,6 +75,9 @@ beforeEach(() => {
   mocks.requireModerator.mockResolvedValue(moderator);
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.uploadsEnabled.mockReturnValue(false);
+  mocks.db.moderationCase.findFirst.mockResolvedValue(null);
+  mocks.db.moderationCase.create.mockResolvedValue({ id: "case-1" });
+  mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => {
     if (typeof input === "function") return input(mocks.db);
@@ -297,7 +301,8 @@ describe("messaging, reports, and notifications", () => {
     await reportContent(form({ targetType, targetId: ids.thread, reason: "Spam", details: "Repeated", returnTo: "/safe" }));
     expect(mocks.db.report.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { reporterId_targetType_targetId: { reporterId: ids.user, targetType, targetId: ids.thread } },
-      update: expect.objectContaining({ status: "OPEN", reviewedAt: null }),
+      update: expect.objectContaining({ caseId: "case-1", reason: "Spam" }),
+      create: expect.objectContaining({ caseId: "case-1", reporterId: ids.user }),
     }));
   });
 
@@ -314,9 +319,9 @@ describe("messaging, reports, and notifications", () => {
 
 describe("moderation actions", () => {
   it.each(["RESOLVED", "DISMISSED"] as const)("records a %s report decision and audit action", async (decision) => {
-    mocks.db.report.findUnique.mockResolvedValue({ id: ids.report, targetType: "THREAD", targetId: ids.thread });
+    mocks.db.report.findUnique.mockResolvedValue({ id: ids.report, caseId: "case-1", targetType: "THREAD", targetId: ids.thread, case: { assignedToId: null } });
     await moderateReport(form({ reportId: ids.report, decision, resolution: "Reviewed" }));
-    expect(mocks.db.report.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: decision, reviewedById: ids.admin }) }));
+    expect(mocks.db.moderationCase.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "case-1" }, data: expect.objectContaining({ status: decision, assignedToId: ids.admin }) }));
     expect(mocks.db.moderationAction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: decision === "RESOLVED" ? "RESOLVE_REPORT" : "DISMISS_REPORT" }) });
   });
 
@@ -326,7 +331,7 @@ describe("moderation actions", () => {
   });
 
   it.each([false, true])("toggles thread lock state from %s", async (isLocked) => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", isLocked });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", isLocked, authorId: ids.other });
     await toggleThreadLock(form({ threadId: ids.thread }));
     expect(mocks.db.thread.update).toHaveBeenCalledWith({ where: { id: ids.thread }, data: { isLocked: !isLocked } });
     expect(mocks.db.moderationAction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: isLocked ? "UNLOCK" : "LOCK" }) });
@@ -341,6 +346,8 @@ describe("moderation actions", () => {
     ["THREAD", "true", "thread", "HIDE"],
     ["REPLY", "false", "reply", "RESTORE"],
   ] as const)("changes %s visibility and audits it", async (targetType, hide, modelName, type) => {
+    if (targetType === "THREAD") mocks.db.thread.findUnique.mockResolvedValue({ authorId: ids.other });
+    else mocks.db.reply.findUnique.mockResolvedValue({ authorId: ids.other, threadId: ids.thread });
     await setContentVisibility(form({ targetType, targetId: ids.thread, hide, reason: "Reviewed" }));
     expect(mocks.db[modelName].update).toHaveBeenCalledWith({ where: { id: ids.thread }, data: { status: hide === "true" ? "HIDDEN" : "PUBLISHED" } });
     expect(mocks.db.moderationAction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type }) });
@@ -352,7 +359,7 @@ describe("moderation actions", () => {
     mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, clerkId: "user_other", role: "MEMBER" });
     await suspendMember(form({ userId: ids.other, days: "2", reason: "Repeated abuse" }));
     expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.other }, data: expect.objectContaining({ status: "SUSPENDED", suspendedUntil: new Date("2026-08-26T12:00:00Z") }) });
-    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: { type: "MODERATION", recipientId: ids.other, actorId: ids.admin } });
+    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "MODERATION", recipientId: ids.other, actorId: ids.admin, moderationActionId: "action-1" }) });
     vi.useRealTimers();
   });
 

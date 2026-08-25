@@ -18,6 +18,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const accessMode = getClerkAccessMode();
   const viewer = await getViewer();
   const categories = await db.category.findMany({
+    where: { archivedAt: null },
     orderBy: { position: "asc" },
     select: { id: true, name: true, postingPolicy: true },
   });
@@ -29,7 +30,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     role: viewer.role,
   } : null;
   const content = (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <NewThreadDialogProvider
           isAuthenticated={Boolean(viewer)}

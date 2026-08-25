@@ -20,6 +20,7 @@ export async function listThreads(options: {
   return db.thread.findMany({
     where: {
       status: "PUBLISHED",
+      category: { archivedAt: null },
       categoryId,
       authorId,
       tags: tagId ? { some: { tagId } } : undefined,
@@ -41,6 +42,7 @@ export async function searchThreads(query: string) {
   return db.thread.findMany({
     where: {
       status: "PUBLISHED",
+      category: { archivedAt: null },
       OR: [
         { title: { contains: q, mode: "insensitive" } },
         { body: { contains: q, mode: "insensitive" } },

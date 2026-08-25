@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, clerkClientMock, getUserMock, currentUserMock, findUniqueMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
+const { authMock, clerkClientMock, getUserMock, currentUserMock, findUniqueMock, updateMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   clerkClientMock: vi.fn(),
   getUserMock: vi.fn(),
   currentUserMock: vi.fn(),
   findUniqueMock: vi.fn(),
+  updateMock: vi.fn(),
   upsertMock: vi.fn(),
   redirectMock: vi.fn(),
   e2eUserMock: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: findUniqueMock,
+      update: updateMock,
       upsert: upsertMock,
     },
   },
@@ -37,6 +39,7 @@ describe("syncCurrentUser", () => {
     getUserMock.mockReset();
     currentUserMock.mockReset();
     findUniqueMock.mockReset();
+    updateMock.mockReset();
     upsertMock.mockReset();
     redirectMock.mockReset().mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
     e2eUserMock.mockReset().mockResolvedValue(null);
@@ -158,6 +161,7 @@ describe("viewer authorization", () => {
     clerkClientMock.mockReset().mockResolvedValue({ users: { getUser: getUserMock } });
     getUserMock.mockReset();
     findUniqueMock.mockReset();
+    updateMock.mockReset();
     redirectMock.mockReset().mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   });
 
@@ -209,6 +213,15 @@ describe("viewer authorization", () => {
     e2eUserMock.mockResolvedValue("local");
     findUniqueMock.mockResolvedValue({ id: "local", status: "ACTIVE", suspendedUntil: new Date(Date.now() - 1), role: "MEMBER" });
     await expect(requireUser()).resolves.toEqual(expect.objectContaining({ id: "local" }));
+  });
+
+  it("automatically restores a suspended user after the suspension expires", async () => {
+    e2eModeMock.mockReturnValue(true);
+    e2eUserMock.mockResolvedValue("local");
+    findUniqueMock.mockResolvedValue({ id: "local", status: "SUSPENDED", suspendedUntil: new Date(Date.now() - 1), role: "MEMBER" });
+    updateMock.mockResolvedValue({ id: "local", status: "ACTIVE", suspendedUntil: null, role: "MEMBER" });
+    await expect(requireUser()).resolves.toEqual(expect.objectContaining({ status: "ACTIVE" }));
+    expect(updateMock).toHaveBeenCalledWith({ where: { id: "local" }, data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null } });
   });
 
   it.each(["MODERATOR", "ADMIN"])("allows %s staff", async (role) => {
