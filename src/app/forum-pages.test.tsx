@@ -12,7 +12,12 @@ vi.mock("@/lib/db", () => ({ db: {
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/components/account/account-security", () => ({ AccountSecurity: () => <section>Custom identity settings</section> }));
-vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, searchThreads: mocks.searchThreads, threadListInclude: {} }));
+vi.mock("@/lib/queries", () => ({
+  canModerate: (viewer: { role?: string } | null) => viewer?.role === "MODERATOR" || viewer?.role === "ADMIN",
+  listThreads: mocks.listThreads,
+  searchThreads: mocks.searchThreads,
+  threadListInclude: {},
+}));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/components/forum/thread-card", () => ({ ThreadCard: ({ thread }: { thread: { title: string } }) => <article>{thread.title}</article> }));
 vi.mock("@/components/new-thread-trigger", () => ({ NewThreadTrigger: ({ categoryId, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { categoryId?: string }) => <button data-category-id={categoryId} {...props}>{children}</button> }));
@@ -66,15 +71,25 @@ describe("category, tag, and search pages", () => {
     mocks.category.mockResolvedValue({ ...category, postingPolicy: "ANNOUNCEMENTS" });
 
     const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
-    expect(screen.getByText("Announcements")).toBeInTheDocument();
+    expect(screen.getByLabelText("Announcements")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New thread" })).not.toBeInTheDocument();
     expect(screen.getByText(/Only admins can start discussions here/)).toBeInTheDocument();
 
     mocks.viewer.mockResolvedValue({ ...user, role: "ADMIN" });
     mocks.category.mockResolvedValue({ ...category, postingPolicy: "ADMIN_ONLY" });
     rerender(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
-    expect(screen.getByText("Admin only")).toBeInTheDocument();
+    expect(screen.getByLabelText("Admin only")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New thread" })).toBeInTheDocument();
+  });
+
+  it("labels an archived space once for staff without exposing creation", async () => {
+    mocks.viewer.mockResolvedValue({ ...user, role: "ADMIN" });
+    mocks.category.mockResolvedValue({ ...category, archivedAt: new Date() });
+
+    render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
+
+    expect(screen.getAllByText("Archived")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "New thread" })).not.toBeInTheDocument();
   });
 
   it("renders a tag result and rejects missing tags", async () => {

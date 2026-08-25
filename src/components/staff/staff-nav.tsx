@@ -13,7 +13,7 @@ const items = [
   { href: "/staff/audit", label: "Audit log", icon: Activity, admin: false },
   { href: "/staff/spaces", label: "Spaces", icon: Waypoints, admin: true },
   { href: "/staff/tags", label: "Tags", icon: Tags, admin: true },
-  { href: "/staff/settings/moderation", label: "Presets", icon: Settings2, admin: true },
+  { href: "/staff/settings/moderation", label: "Moderation presets", icon: Settings2, admin: true },
 ] as const;
 
 export function StaffNav({ role }: { role: ForumRole }) {

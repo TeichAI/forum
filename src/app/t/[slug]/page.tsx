@@ -10,6 +10,7 @@ import { Markdown } from "@/components/markdown";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { Avatar } from "@/components/ui/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { PostingPolicyBadge } from "@/components/forum/space-posting-policy";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -53,11 +54,6 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
   if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt) && !canModerate(viewer))) notFound();
 
   const returnTo = `/t/${thread.slug}`;
-  const postingPolicyLabel = thread.category.postingPolicy === "ANNOUNCEMENTS"
-    ? "Announcements"
-    : thread.category.postingPolicy === "ADMIN_ONLY"
-      ? "Admin only"
-      : null;
   const showPolicyReplyNotice = thread.category.postingPolicy === "ADMIN_ONLY"
     && !canComment(viewer?.role, thread.category.postingPolicy);
 
@@ -67,7 +63,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
         <Link href={`/c/${thread.category.slug}`} className="font-bold" style={{ color: thread.category.color }}>
           {thread.category.name}
         </Link>
-        {postingPolicyLabel ? <span className="pill">{postingPolicyLabel}</span> : null}
+        {thread.category.postingPolicy !== "OPEN" ? <PostingPolicyBadge policy={thread.category.postingPolicy} /> : null}
         <span>/</span>
         <span>Discussion</span>
       </div>

@@ -14,8 +14,10 @@ describe("MarkdownEditorClient", () => {
     const input = screen.getByRole("textbox");
     expect(input).toHaveAttribute("name", "message");
     expect(input).toHaveValue("Hello");
+    expect(screen.getByText("5 characters")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "Changed" } });
     expect(input).toHaveValue("Changed");
+    expect(screen.getByText("7 characters")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Fake upload" })).not.toBeInTheDocument();
   });
 

@@ -35,7 +35,7 @@ describe("forum display components", () => {
     expect(screen.queryByText("7")).not.toBeInTheDocument();
 
     rerender(<CategoryList categories={[{ ...category, postingPolicy: "ADMIN_ONLY" } as never]} />);
-    expect(screen.getByText("Admin only")).toHaveAttribute("title", "Only admins can start discussions or comment.");
+    expect(screen.getByLabelText("Admin only")).toHaveAttribute("title", "Only admins can start discussions or comment.");
   });
 
   it("renders an empty state and exposes creation only to administrators", () => {
@@ -53,7 +53,7 @@ describe("forum display components", () => {
     expect(screen.getByRole("link", { name: /Pinned hello/ })).toHaveAttribute("href", "/t/hello");
     expect(screen.getByRole("link", { name: "#Testing" })).toHaveAttribute("href", "/tag/testing");
     expect(screen.getByRole("img", { name: "Administrator" })).toBeInTheDocument();
-    expect(screen.getByText("Announcements")).toHaveAttribute("title", "Only admins can start discussions; everyone can comment.");
+    expect(screen.getByLabelText("Announcements")).toHaveAttribute("title", "Only admins can start discussions; everyone can comment.");
     expect(screen.getByText("3")).toBeInTheDocument();
   });
 

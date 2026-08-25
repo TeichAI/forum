@@ -102,6 +102,22 @@ describe("NewThreadDialogProvider", () => {
     expect(screen.getByLabelText("Post")).toHaveValue("");
   });
 
+  it("updates the title count and previews at most five unique normalized tags", async () => {
+    const user = userEvent.setup();
+    render(<Composer />);
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+
+    await user.type(screen.getByLabelText("Title"), "A clear title");
+    await user.type(screen.getByLabelText(/Tags/), " API, api, Showcase, Help, Question, Design, Extra");
+
+    expect(screen.getByText("13/160")).toBeInTheDocument();
+    expect(screen.getByText("5/5 tags")).toBeInTheDocument();
+    expect(screen.getByText("#api")).toBeInTheDocument();
+    expect(screen.getAllByText("#api")).toHaveLength(1);
+    expect(screen.getByText("#design")).toBeInTheDocument();
+    expect(screen.queryByText("#extra")).not.toBeInTheDocument();
+  });
+
   it("closes on Escape and when the pathname changes", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<Composer />);

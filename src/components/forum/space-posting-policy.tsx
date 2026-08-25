@@ -1,3 +1,4 @@
+import { Lock, Megaphone } from "lucide-react";
 import type { SpacePostingPolicy } from "@prisma/client";
 
 export const SPACE_POSTING_POLICY_OPTIONS = [
@@ -29,18 +30,21 @@ const POLICY_DETAILS = Object.fromEntries(
 export function PostingPolicyBadge({ policy }: { policy: SpacePostingPolicy }) {
   if (policy === "OPEN") return null;
   const details = POLICY_DETAILS[policy];
+  const Icon = policy === "ANNOUNCEMENTS" ? Megaphone : Lock;
 
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-wide"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border"
       style={{
         borderColor: "color-mix(in srgb, var(--brand) 25%, var(--line))",
         background: "var(--brand-soft)",
         color: "var(--brand-dark)",
       }}
       title={details.description}
+      aria-label={details.label}
+      role="img"
     >
-      {details.label}
+      <Icon size={12} aria-hidden="true" />
     </span>
   );
 }

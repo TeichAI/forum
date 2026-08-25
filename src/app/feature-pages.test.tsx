@@ -94,7 +94,7 @@ describe("discussion page", () => {
       category: { ...thread.category, postingPolicy: "ADMIN_ONLY" },
     });
     const { rerender } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
-    expect(screen.getByText("Admin only")).toBeInTheDocument();
+    expect(screen.getByLabelText("Admin only")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Replies are limited to admins" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Post reply" })).not.toBeInTheDocument();
 
@@ -115,7 +115,7 @@ describe("discussion page", () => {
       category: { ...thread.category, postingPolicy: "ANNOUNCEMENTS" },
     });
     const { rerender } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
-    expect(screen.getByText("Announcements")).toBeInTheDocument();
+    expect(screen.getByLabelText("Announcements")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Post reply" })).toBeInTheDocument();
 
     mocks.viewer.mockResolvedValue(admin);

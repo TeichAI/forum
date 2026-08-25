@@ -13,13 +13,13 @@ describe("StaffNav", () => {
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Members" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Spaces" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Presets" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Moderation presets" })).not.toBeInTheDocument();
   });
 
   it("adds every administration module for administrators", () => {
     render(<StaffNav role="ADMIN" />);
     expect(screen.getByRole("link", { name: "Spaces" })).toHaveAttribute("href", "/staff/spaces");
     expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/staff/tags");
-    expect(screen.getByRole("link", { name: "Presets" })).toHaveAttribute("href", "/staff/settings/moderation");
+    expect(screen.getByRole("link", { name: "Moderation presets" })).toHaveAttribute("href", "/staff/settings/moderation");
   });
 });

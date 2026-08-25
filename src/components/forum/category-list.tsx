@@ -6,22 +6,43 @@ import { PostingPolicyBadge } from "@/components/forum/space-posting-policy";
 
 export function CategoryList({ categories, canCreateSpace = false }: { categories: (Category & { _count?: { threads: number } })[]; canCreateSpace?: boolean }) {
   return (
-    <aside className="card p-3">
-      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-1">
-        <div className="text-xs font-extrabold uppercase tracking-widest muted">Spaces</div>
+    <aside className="card overflow-hidden">
+      <div className="flex items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: "var(--line)" }}>
+        <div>
+          <div className="text-xs font-extrabold uppercase tracking-widest" style={{ color: "var(--foreground)" }}>Spaces</div>
+          <div className="text-xs muted">Browse by topic</div>
+        </div>
         {canCreateSpace && <CreateSpaceDialog />}
       </div>
-      <nav className="space-y-1">
-        {categories.map((category) => (
-          <Link key={category.id} href={`/c/${category.slug}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-[var(--surface-soft)]">
-            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ color: category.color, background: `color-mix(in srgb, ${category.color} 13%, transparent)` }}><Hash size={15} /></span>
-            <span className="min-w-0 flex-1 truncate">{category.name}</span>
-            <PostingPolicyBadge policy={category.postingPolicy} />
-            {category._count && <span className="text-xs muted">{category._count.threads}</span>}
-          </Link>
-        ))}
+      <nav className="p-2">
+        {categories.length ? (
+          <ul className="space-y-1" aria-label="Spaces">
+            {categories.map((category) => (
+              <li key={category.id}>
+                <Link
+                  href={`/c/${category.slug}`}
+                  className="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition hover:bg-[var(--surface-soft)] focus-visible:bg-[var(--surface-soft)]"
+                >
+                  <span
+                    className="grid h-8 w-8 place-items-center rounded-lg border text-sm transition group-hover:scale-[1.02]"
+                    style={{ color: category.color, background: `color-mix(in srgb, ${category.color} 14%, transparent)`, borderColor: `color-mix(in srgb, ${category.color} 18%, transparent)` }}
+                    aria-hidden
+                  >
+                    <Hash size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                  <PostingPolicyBadge policy={category.postingPolicy} />
+                  {typeof category._count?.threads === "number" && (
+                    <span className="rounded-full bg-[var(--surface-soft)] px-2 py-0.5 text-xs font-bold muted">{category._count.threads}</span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-3 py-6 text-center text-sm leading-6 muted">No spaces have been created yet.</p>
+        )}
       </nav>
-      {!categories.length && <p className="px-3 py-4 text-sm muted">No spaces have been created yet.</p>}
     </aside>
   );
 }
