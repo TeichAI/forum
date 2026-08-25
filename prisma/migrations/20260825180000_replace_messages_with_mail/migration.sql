@@ -31,7 +31,28 @@ ALTER TABLE "Notification" DROP COLUMN "conversationId", DROP COLUMN "messageId"
 DROP TABLE "Message";
 DROP TABLE "Conversation";
 
-CREATE TYPE "MailLocation" AS ENUM ('INBOX', 'ARCHIVE', 'TRASH');
+-- A previous `prisma db push` may have created this enum before failing on the
+-- legacy MESSAGE values. Reuse that compatible orphan so migrate deploy can
+-- safely reconcile the database with migration history.
+DO $$
+BEGIN
+  CREATE TYPE "MailLocation" AS ENUM ('INBOX', 'ARCHIVE', 'TRASH');
+EXCEPTION
+  WHEN duplicate_object THEN
+    IF (
+      SELECT array_agg(enum_value::text ORDER BY sort_order)
+      FROM (
+        SELECT e.enumlabel AS enum_value, e.enumsortorder AS sort_order
+        FROM pg_type t
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = current_schema() AND t.typname = 'MailLocation'
+      ) existing_values
+    ) IS DISTINCT FROM ARRAY['INBOX', 'ARCHIVE', 'TRASH']::text[] THEN
+      RAISE EXCEPTION 'Existing MailLocation type has incompatible values';
+    END IF;
+END
+$$;
 
 CREATE TABLE "MailThread" (
   "id" TEXT NOT NULL,
