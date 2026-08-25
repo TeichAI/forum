@@ -44,6 +44,9 @@ describe("InvitationForm sign-up", () => {
     navigateOnFinalize(signUp.signUp);
     const { container } = renderForm("sign_up", createSignInHook(), signUp);
 
+    expect(screen.getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
+    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+
     await user.type(screen.getByLabelText("First name"), "Ada");
     await user.type(screen.getByLabelText("Last name"), "Lovelace");
     await user.type(screen.getByLabelText("Password", { exact: true }), "secretpass");

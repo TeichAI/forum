@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput, FieldMessage, FormAlert, PasswordInput, SubmitButton } from "./auth-controls";
 import { clerkErrorMessage, restrictedModeFromClerkError, safeRedirect, ssoCallbackUrl } from "./auth-utils";
+import { LegalConsent } from "./legal-consent";
 import { SocialConnections, type SocialConnection } from "./social-connections";
 
 const SUPPORTED_SSO_FIELDS = new Set(["email_address", "first_name", "last_name", "legal_accepted"]);
@@ -220,7 +221,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
           <PasswordInput id="confirm-password" name="confirmPassword" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" minLength={8} required error={confirmPassword && password !== confirmPassword ? "Passwords do not match" : undefined} aria-describedby={confirmPassword && password !== confirmPassword ? "confirm-password-error" : undefined} />
           <FieldMessage id="confirm-password-error">{confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined}</FieldMessage>
         </div>}
-        {requiresLegal && <label className="mt-5 flex items-start gap-2.5 text-xs leading-5 muted"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required className="mt-1 accent-[var(--brand)]" />I agree to the Teich community guidelines and account terms.</label>}
+        {requiresLegal && <LegalConsent checked={acceptedTerms} onChange={setAcceptedTerms} />}
         <div id="clerk-captcha" data-cl-theme="auto" data-cl-size="flexible" className="mt-4" />
         <SubmitButton busy={busy} busyLabel={continuingSso ? "Completing account…" : "Creating account…"}>{continuingSso ? "Complete account" : "Create account"}</SubmitButton>
       </form>

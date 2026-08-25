@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { CodeInput, FieldMessage, FormAlert, PasswordInput, SubmitButton } from "./auth-controls";
 import { authFormUrl, clerkErrorMessage, safeRedirect } from "./auth-utils";
+import { LegalConsent } from "./legal-consent";
 
 export type InvitationAccountStatus = "sign_in" | "sign_up";
 type Step = "details" | "mfa";
@@ -170,7 +171,7 @@ export function InvitationForm({ ticket, accountStatus, redirectUrl }: { ticket:
         </div>}
         {showPassword && <div className={showFirstName || showLastName ? "mt-5" : ""}><label htmlFor="invitation-password" className="label">Password</label><PasswordInput id="invitation-password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required={requiredFields.includes("password")} error={signUpErrors.fields.password?.longMessage ?? signUpErrors.fields.password?.message} aria-describedby={signUpErrors.fields.password ? "invitation-password-error" : undefined} /><FieldMessage id="invitation-password-error">{signUpErrors.fields.password?.longMessage ?? signUpErrors.fields.password?.message}</FieldMessage></div>}
         {showPassword && <div className="mt-5"><label htmlFor="invitation-confirm-password" className="label">Confirm password</label><PasswordInput id="invitation-confirm-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required={requiredFields.includes("password")} error={confirmPassword && password !== confirmPassword ? "Passwords do not match" : undefined} aria-describedby={confirmPassword && password !== confirmPassword ? "invitation-confirm-password-error" : undefined} /><FieldMessage id="invitation-confirm-password-error">{confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined}</FieldMessage></div>}
-        {requiresLegal && <label className="mt-5 flex items-start gap-2.5 text-xs leading-5 muted"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} required className="mt-1 accent-[var(--brand)]" />I agree to the Teich community guidelines and account terms.</label>}
+        {requiresLegal && <LegalConsent checked={acceptedTerms} onChange={setAcceptedTerms} />}
         <div id="clerk-captcha" data-cl-theme="auto" data-cl-size="flexible" className="mt-4" />
         <SubmitButton busy={busy} busyLabel="Accepting…">Accept invitation</SubmitButton>
       </form>

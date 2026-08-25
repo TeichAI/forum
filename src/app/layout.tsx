@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Header } from "@/components/header";
 import { NewThreadDialogProvider } from "@/components/new-thread-dialog";
+import { SiteFooter } from "@/components/site-footer";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isE2ETestMode } from "@/lib/e2e-auth";
@@ -40,7 +41,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         >
           <Header viewer={headerViewer} accessMode={accessMode} />
           <main>{children}</main>
-          <footer className="shell py-12 text-center text-sm muted">Built with the Teich community.</footer>
+          <SiteFooter />
         </NewThreadDialogProvider>
       </body>
     </html>

@@ -60,7 +60,7 @@ describe("SignUpForm account details", () => {
     const hook = createSignUpHook({ signUp: { requiredFields: ["first_name", "last_name", "legal_accepted"], unverifiedFields: ["email_address"] } });
     renderForm(hook);
     await enterAccount(user);
-    await user.click(screen.getByRole("checkbox", { name: /community guidelines/i }));
+    await user.click(screen.getByRole("checkbox", { name: /community standards/i }));
     await user.click(screen.getByRole("button", { name: "Create account" }));
     expect(hook.signUp.password).toHaveBeenCalledWith({
       emailAddress: "ada@example.com",
@@ -85,6 +85,8 @@ describe("SignUpForm account details", () => {
     const user = userEvent.setup();
     const hook = createSignUpHook({ signUp: { requiredFields: ["legal_accepted"] } });
     renderForm(hook);
+    expect(screen.getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
+    expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
     await enterAccount(user);
     await user.click(screen.getByRole("button", { name: "Create account" }));
     expect(screen.getByRole("alert")).toHaveTextContent("accept the account terms");
@@ -222,7 +224,7 @@ describe("SignUpForm GitHub SSO", () => {
     expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("First name"), "Ada");
-    await user.click(screen.getByRole("checkbox", { name: /community guidelines/i }));
+    await user.click(screen.getByRole("checkbox", { name: /community standards/i }));
     await user.click(screen.getByRole("button", { name: "Complete account" }));
     expect(hook.signUp.update).toHaveBeenCalledWith({ firstName: "Ada", legalAccepted: true });
     expect(hook.signUp.finalize).toHaveBeenCalledOnce();

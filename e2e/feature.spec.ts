@@ -20,6 +20,29 @@ async function useIdentity(context: BrowserContext, userId: string) {
   await context.addCookies([{ name: "teich_e2e_session", value: sessionToken(userId), url: baseUrl, httpOnly: true, sameSite: "Lax" }]);
 }
 
+test("legal documents are public, linked, and responsive", async ({ page }) => {
+  await page.goto("/terms");
+  await expect(page).toHaveTitle("Terms of Service · Teich Forum");
+  await expect(page.getByRole("heading", { level: 1, name: "Terms of Service" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Community standards and acceptable use" })).toBeVisible();
+  await expect(page.locator(".legal-sidebar")).toBeVisible();
+  const footer = page.getByRole("contentinfo");
+  await expect(footer.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+  expect((await footer.boundingBox())?.height).toBeLessThanOrEqual(48);
+
+  await footer.getByRole("link", { name: "Privacy Policy" }).click();
+  await expect(page).toHaveTitle("Privacy Policy · Teich Forum");
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Retention and account deletion" })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".legal-sidebar")).toBeHidden();
+  await expect(page.locator(".legal-mobile-toc")).toBeVisible();
+  await page.locator(".legal-mobile-toc summary").click();
+  await expect(page.locator(".legal-mobile-toc").getByRole("link", { name: "Information we collect" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("anonymous visitors can discover public content", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Ideas grow better/ })).toBeVisible();
