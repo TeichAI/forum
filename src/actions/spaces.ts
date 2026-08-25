@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { consumeUserMutation, rateLimitedActionState } from "@/lib/rate-limit";
 import { slugify } from "@/lib/utils";
 
 const spaceSchema = z.object({
@@ -16,15 +17,19 @@ const spaceSchema = z.object({
 });
 
 export type SpaceActionState = {
-  status: "idle" | "error";
+  status: "idle" | "error" | "rate_limited";
   message?: string;
   fieldErrors?: Partial<Record<"name" | "description" | "color" | "postingPolicy", string>>;
+  retryAfterSeconds?: number;
+  resetAt?: string;
 };
 
 export type SpacePolicyActionState = {
-  status: "idle" | "success" | "error";
+  status: "idle" | "success" | "error" | "rate_limited";
   message?: string;
   fieldErrors?: Partial<Record<"categoryId" | "postingPolicy", string>>;
+  retryAfterSeconds?: number;
+  resetAt?: string;
 };
 
 function availableSlug(name: string, occupied: Set<string>) {
@@ -37,7 +42,9 @@ function availableSlug(name: string, occupied: Set<string>) {
 }
 
 export async function createSpace(_state: SpaceActionState, formData: FormData): Promise<SpaceActionState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rateLimit = await consumeUserMutation(admin);
+  if (!rateLimit.allowed) return rateLimitedActionState(rateLimit);
   const parsed = spaceSchema.safeParse({
     name: formData.get("name"),
     description: formData.get("description"),
@@ -109,7 +116,9 @@ export async function updateSpacePostingPolicy(
   _state: SpacePolicyActionState,
   formData: FormData,
 ): Promise<SpacePolicyActionState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rateLimit = await consumeUserMutation(admin);
+  if (!rateLimit.allowed) return rateLimitedActionState(rateLimit);
   const parsed = spacePolicySchema.safeParse({
     categoryId: formData.get("categoryId"),
     postingPolicy: formData.get("postingPolicy"),

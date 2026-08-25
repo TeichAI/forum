@@ -4,6 +4,7 @@ import type { SpacePostingPolicy } from "@prisma/client";
 import { useActionState, useId, useState } from "react";
 import { updateSpacePostingPolicy, type SpacePolicyActionState } from "@/actions/spaces";
 import { FieldMessage } from "@/components/auth/auth-controls";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import { SPACE_POSTING_POLICY_OPTIONS } from "@/components/forum/space-posting-policy";
 import { SubmitButton } from "@/components/ui/submit-button";
 
@@ -25,6 +26,8 @@ export function SpacePostingPolicyForm({ category }: SpacePostingPolicyFormProps
   const selectId = useId();
   const messageId = useId();
   const selectedDetails = SPACE_POSTING_POLICY_OPTIONS.find((option) => option.value === selectedPolicy)!;
+  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
+  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
 
   return (
     <section className="card p-5 sm:p-6" aria-labelledby={`${selectId}-heading`}>
@@ -38,6 +41,7 @@ export function SpacePostingPolicyForm({ category }: SpacePostingPolicyFormProps
         </div>
 
         <form action={action} className="w-full shrink-0 space-y-3 sm:w-80" noValidate>
+          <fieldset disabled={coolingDown} className="contents">
           <input type="hidden" name="categoryId" value={category.id} />
           <div>
             <label className="label" htmlFor={selectId}>Posting permissions</label>
@@ -61,14 +65,16 @@ export function SpacePostingPolicyForm({ category }: SpacePostingPolicyFormProps
             <div
               id={messageId}
               className="text-xs font-semibold"
-              style={{ color: state.status === "error" ? "var(--danger)" : "var(--brand-dark)" }}
-              role={state.status === "error" ? "alert" : "status"}
+              style={{ color: state.status === "success" ? "var(--brand-dark)" : "var(--danger)" }}
+              role={state.status === "success" ? "status" : "alert"}
               aria-live="polite"
             >
               {state.message}
             </div>
             <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
           </div>
+          {resetAt ? <RateLimitCountdown resetAt={resetAt} onReady={onReady} className="text-xs font-semibold" /> : null}
+          </fieldset>
         </form>
       </div>
     </section>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { UploadButton } from "@/lib/uploadthing";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 
 export type MarkdownEditorProps = {
   id?: string;
@@ -23,24 +24,41 @@ export function MarkdownEditorClient({
   uploadsEnabled,
 }: MarkdownEditorProps & { uploadsEnabled: boolean }) {
   const [value, setValue] = useState(initialValue);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadResetAt, setUploadResetAt] = useState<string>();
+  const { coolingDown, onReady } = useRateLimitCooldown(uploadResetAt);
 
   return (
     <div className="overflow-hidden rounded-xl border focus-within:border-[var(--brand)] focus-within:shadow-[var(--focus-ring)] transition-shadow" style={{ borderColor: "var(--line)", background: "var(--surface)" }}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
         <span className="leading-5">Markdown supported · <span className="hidden sm:inline">use @username to mention</span></span>
-        {uploadsEnabled ? (
+        {uploadsEnabled && coolingDown ? (
+          <button type="button" className="button button-ghost !h-7 !px-2.5 !text-xs" disabled><ImagePlus size={13} aria-hidden /> Add image</button>
+        ) : uploadsEnabled ? (
           <UploadButton
             endpoint="imageUploader"
             appearance={{ button: "button button-ghost !h-7 !px-2.5 !text-xs", allowedContent: "hidden" }}
             content={{ button: <><ImagePlus size={13} aria-hidden /> Add image</> }}
             onClientUploadComplete={(files) => {
+              setUploadError("");
+              setUploadResetAt(undefined);
               const file = files[0];
               if (file?.serverData?.url) setValue((current) => `${current}${current ? "\n\n" : ""}![${file.name}](${file.serverData.url})`);
             }}
-            onUploadError={(error) => window.alert(error.message)}
+            onUploadError={(error) => {
+              setUploadError(error.message);
+              const seconds = Number(error.message.match(/Try again in (\d+) second/)?.[1]);
+              setUploadResetAt(Number.isFinite(seconds) ? new Date(Date.now() + seconds * 1_000).toISOString() : undefined);
+            }}
           />
         ) : null}
       </div>
+      {uploadError ? (
+        <div className="border-b px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--danger)" }} role="alert">
+          {uploadError}
+          {uploadResetAt ? <div className="mt-1"><RateLimitCountdown resetAt={uploadResetAt} onReady={onReady} className="text-xs font-semibold" /></div> : null}
+        </div>
+      ) : null}
       <textarea
         id={id}
         className="w-full resize-y bg-transparent p-3.5 text-[0.92rem] leading-6 outline-none placeholder:text-[var(--muted)]"

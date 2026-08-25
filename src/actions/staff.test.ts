@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     db, requireModerator: vi.fn(), requireAdmin: vi.fn(), getVerifiedUserRole: vi.fn(),
-    revalidatePath: vi.fn(), canModerateRole: vi.fn(),
+    revalidatePath: vi.fn(), canModerateRole: vi.fn(), consumeUserMutation: vi.fn(),
   };
 });
 
@@ -30,6 +30,10 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/moderation", () => ({ canModerateRole: mocks.canModerateRole }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
+});
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
 import {
@@ -60,9 +64,31 @@ beforeEach(() => {
   mocks.requireAdmin.mockResolvedValue(admin);
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.canModerateRole.mockImplementation((actor: string, target: string) => target !== "ADMIN" && (actor === "ADMIN" || target === "MEMBER"));
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
   mocks.db.moderationCase.updateMany.mockResolvedValue({ count: 1 });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => typeof input === "function" ? input(mocks.db) : Promise.all(input as Promise<unknown>[]));
+});
+
+describe("staff rate limiting", () => {
+  it("stops every staff mutation before validation or database access", async () => {
+    mocks.consumeUserMutation.mockResolvedValue({
+      allowed: false, retryAfterSeconds: 4, resetAt: "2026-08-25T12:00:04.000Z", remaining: 0,
+    });
+    const actions = [
+      claimCase, setCasePriority, closeCase, addStaffNote, moderateContent, setMemberSuspension,
+      saveSpace, changeSpaceState, renameTag, mergeTag, saveModerationSettings,
+    ];
+
+    for (const action of actions) {
+      await expect(action({ status: "idle" }, new FormData())).resolves.toEqual(expect.objectContaining({
+        status: "rate_limited", retryAfterSeconds: 4,
+      }));
+    }
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+    expect(mocks.db.moderationCase.findUnique).not.toHaveBeenCalled();
+    expect(mocks.db.category.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe("staff case workflows", () => {

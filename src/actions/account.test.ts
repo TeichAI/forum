@@ -7,12 +7,17 @@ const mocks = vi.hoisted(() => ({
   clerkClient: vi.fn(),
   update: vi.fn(),
   getUser: vi.fn(),
+  consumeUserMutation: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/db", () => ({ db: { user: { update: mocks.update } } }));
 vi.mock("@clerk/nextjs/server", () => ({ auth: mocks.auth, clerkClient: mocks.clerkClient }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
+});
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
 function form(values: Record<string, string>) {
@@ -29,6 +34,7 @@ beforeEach(() => {
   mocks.requireUser.mockResolvedValue(localUser);
   mocks.auth.mockResolvedValue({ userId: "user_1" });
   mocks.clerkClient.mockResolvedValue({ users: { getUser: mocks.getUser } });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: now(), remaining: 10 });
   mocks.update.mockResolvedValue(localUser);
   mocks.getUser.mockResolvedValue({
     primaryEmailAddressId: "email_1",
@@ -37,7 +43,23 @@ beforeEach(() => {
   });
 });
 
+function now() {
+  return new Date().toISOString();
+}
+
 describe("account profile actions", () => {
+  it("stops profile and identity writes when the account limit is reached", async () => {
+    mocks.consumeUserMutation.mockResolvedValue({
+      allowed: false, retryAfterSeconds: 9, resetAt: "2026-08-25T12:00:09.000Z", remaining: 0,
+    });
+
+    await expect(updateAccountProfile(initialAccountActionState, form({ displayName: "Owen", username: "owen", bio: "" })))
+      .resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 9 }));
+    await expect(syncAccountIdentity()).resolves.toEqual(expect.objectContaining({ ok: false, retryAfterSeconds: 9 }));
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.getUser).not.toHaveBeenCalled();
+  });
+
   it("normalizes, updates, and revalidates an account profile", async () => {
     const result = await updateAccountProfile(initialAccountActionState, form({ displayName: " Owen Teich ", username: " NEW_NAME ", bio: " Pond builder " }));
 

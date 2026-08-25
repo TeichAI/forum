@@ -10,6 +10,7 @@ import { syncAccountIdentity } from "@/actions/account";
 import { CodeInput, FormAlert, PasswordInput } from "@/components/auth/auth-controls";
 import { clerkErrorMessage } from "@/components/auth/auth-utils";
 import { Avatar } from "@/components/ui/avatar";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import { ReverificationProvider, useCustomReverification } from "./reverification";
 import { SocialAccountSettings } from "./social-account-settings";
 
@@ -346,13 +347,15 @@ function DeleteAccount({ username }: { username: string }) {
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [resetAt, setResetAt] = useState<string>();
+  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
   const requestDeletion = useCustomReverification(async (value: string) => {
     const response = await fetch("/api/account/delete", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ confirmation: value }),
     });
-    return response.json() as Promise<{ ok?: boolean; error?: string }>;
+    return response.json() as Promise<{ ok?: boolean; error?: string; retryAfterSeconds?: number; resetAt?: string }>;
   });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -362,7 +365,12 @@ function DeleteAccount({ username }: { username: string }) {
     setError("");
     try {
       const body = await requestDeletion(confirmation);
-      if (!body.ok) throw new Error(body.error ?? "Account deletion failed.");
+      if (!body.ok) {
+        setResetAt(body.resetAt);
+        setError(body.error ?? "Account deletion failed.");
+        setBusy(false);
+        return;
+      }
       try { await signOut({ redirectUrl: "/" }); }
       catch { router.replace("/"); router.refresh(); }
     } catch (caught) {
@@ -382,7 +390,8 @@ function DeleteAccount({ username }: { username: string }) {
           <input id="delete-confirmation" className="input" autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required disabled={busy} aria-describedby="delete-account-warning" />
           <p id="delete-account-warning" className="mt-2 text-xs muted">You will verify your identity before the account is deleted.</p>
           <FormAlert>{error}</FormAlert>
-          <button className="button button-danger mt-4" disabled={busy || confirmation !== username}><Trash2 size={16} aria-hidden="true" /> {busy ? "Deleting…" : "Delete my account"}</button>
+          {resetAt ? <div className="mt-2" style={{ color: "var(--danger)" }}><RateLimitCountdown resetAt={resetAt} onReady={onReady} /></div> : null}
+          <button className="button button-danger mt-4" disabled={busy || coolingDown || confirmation !== username}><Trash2 size={16} aria-hidden="true" /> {busy ? "Deleting…" : "Delete my account"}</button>
         </form>
       )}
     </section>

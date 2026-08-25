@@ -3,6 +3,8 @@ import { cleanup } from "@testing-library/react";
 import { toHaveNoViolations } from "jest-axe";
 import { afterEach, expect } from "vitest";
 
+process.env.RATE_LIMITING_ENABLED = "false";
+
 expect.extend(toHaveNoViolations);
 
 afterEach(() => cleanup());

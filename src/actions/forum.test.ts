@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     requireUser: vi.fn(),
     requireModerator: vi.fn(),
     uploadsEnabled: vi.fn(),
+    consumeUserMutation: vi.fn(),
     revalidatePath: vi.fn(),
     redirect: vi.fn(),
   };
@@ -39,6 +40,10 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: mocks.uploadsEnabled }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
+});
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
@@ -75,6 +80,7 @@ beforeEach(() => {
   mocks.requireModerator.mockResolvedValue(moderator);
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.uploadsEnabled.mockReturnValue(false);
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
   mocks.db.moderationCase.findFirst.mockResolvedValue(null);
   mocks.db.moderationCase.create.mockResolvedValue({ id: "case-1" });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
@@ -86,6 +92,51 @@ beforeEach(() => {
 });
 
 describe("discussion actions", () => {
+  it("stops every forum mutation before database access when the member is limited", async () => {
+    mocks.consumeUserMutation.mockResolvedValue({
+      allowed: false, retryAfterSeconds: 12, resetAt: "2026-08-25T12:00:12.000Z", remaining: 0,
+    });
+    const actions = [
+      () => createReply(new FormData()),
+      () => toggleThreadVote(new FormData()),
+      () => toggleReplyVote(new FormData()),
+      () => toggleBookmark(new FormData()),
+      () => toggleFollow(new FormData()),
+      () => updateThread(new FormData()),
+      () => deleteThread(new FormData()),
+      () => updateReply(new FormData()),
+      () => deleteReply(new FormData()),
+      () => startConversation(new FormData()),
+      () => sendMessage(form({ conversationId: ids.conversation })),
+      () => blockMember(new FormData()),
+      () => reportContent(new FormData()),
+      () => markNotificationsRead(),
+      () => moderateReport(new FormData()),
+      () => toggleThreadLock(new FormData()),
+      () => setContentVisibility(new FormData()),
+      () => suspendMember(new FormData()),
+    ];
+
+    for (const action of actions) {
+      await expect(action()).resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 12 }));
+    }
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+    expect(mocks.db.thread.findUnique).not.toHaveBeenCalled();
+    expect(mocks.db.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable state without touching content when the member is limited", async () => {
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12, resetAt: "2026-08-25T12:00:12.000Z", remaining: 0 });
+    await expect(createThread(form({ title: "A useful thread", body: "Body", categoryId: ids.category }))).resolves.toEqual({
+      status: "rate_limited",
+      message: "You’re doing that a little too quickly. Try again in 12 seconds.",
+      retryAfterSeconds: 12,
+      resetAt: "2026-08-25T12:00:12.000Z",
+    });
+    expect(mocks.db.category.findUnique).not.toHaveBeenCalled();
+    expect(mocks.db.thread.create).not.toHaveBeenCalled();
+  });
+
   it("creates a normalized tagged thread, claims referenced uploads, notifies mentions, and redirects", async () => {
     mocks.uploadsEnabled.mockReturnValue(true);
     mocks.db.category.findUnique.mockResolvedValue({ id: ids.category, postingPolicy: "OPEN" });

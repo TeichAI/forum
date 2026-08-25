@@ -6,7 +6,7 @@ vi.mock("@/lib/uploadthing", () => ({ UploadButton: (props: Record<string, unkno
 
 import { MarkdownEditorClient } from "./markdown-editor-client";
 
-beforeEach(() => { upload.props = null; vi.spyOn(window, "alert").mockImplementation(() => undefined); });
+beforeEach(() => { upload.props = null; });
 
 describe("MarkdownEditorClient", () => {
   it("uses controlled input defaults without an upload control", () => {
@@ -26,8 +26,8 @@ describe("MarkdownEditorClient", () => {
     expect(screen.getByRole("button", { name: "Fake upload" })).toBeInTheDocument();
     act(() => (upload.props!.onClientUploadComplete as (files: unknown[]) => void)([{ name: "pond.png", serverData: { url: "https://app.ufs.sh/f/key" } }]));
     expect(screen.getByRole("textbox")).toHaveValue("Intro\n\n![pond.png](https://app.ufs.sh/f/key)");
-    (upload.props!.onClientUploadComplete as (files: unknown[]) => void)([]);
-    (upload.props!.onUploadError as (error: Error) => void)(new Error("Upload failed"));
-    expect(window.alert).toHaveBeenCalledWith("Upload failed");
+    act(() => (upload.props!.onClientUploadComplete as (files: unknown[]) => void)([]));
+    act(() => (upload.props!.onUploadError as (error: Error) => void)(new Error("Upload failed")));
+    expect(screen.getByRole("alert")).toHaveTextContent("Upload failed");
   });
 });

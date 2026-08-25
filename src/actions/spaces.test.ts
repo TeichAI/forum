@@ -6,12 +6,17 @@ const mocks = vi.hoisted(() => ({
   aggregate: vi.fn(),
   create: vi.fn(),
   updateMany: vi.fn(),
+  consumeUserMutation: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.findMany, aggregate: mocks.aggregate, create: mocks.create, updateMany: mocks.updateMany } } }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
+});
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
@@ -32,10 +37,24 @@ beforeEach(() => {
   mocks.aggregate.mockResolvedValue({ _max: { position: null } });
   mocks.create.mockResolvedValue({ id: "space" });
   mocks.updateMany.mockResolvedValue({ count: 1 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
 });
 
 describe("space creation", () => {
+  it("stops space creation and policy writes when the staff limit is reached", async () => {
+    mocks.consumeUserMutation.mockResolvedValue({
+      allowed: false, retryAfterSeconds: 7, resetAt: "2026-08-25T12:00:07.000Z", remaining: 0,
+    });
+
+    await expect(createSpace(initialState, form({ name: "Ideas", description: "Discuss ideas", color: "#123456" })))
+      .resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 7 }));
+    await expect(updateSpacePostingPolicy({ status: "idle" }, form({ categoryId: "cm000000000000000000000004", postingPolicy: "OPEN" })))
+      .resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 7 }));
+    expect(mocks.findMany).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
   it("normalizes, appends, revalidates, and opens a newly created space", async () => {
     mocks.findMany.mockResolvedValue([{ name: "Product & Ideas", slug: "product-ideas" }]);
     mocks.aggregate.mockResolvedValue({ _max: { position: 4 } });

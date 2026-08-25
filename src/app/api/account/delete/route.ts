@@ -1,6 +1,7 @@
 import { auth, clerkClient, reverificationErrorResponse } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { consumeUserMutation, RATE_LIMIT_POLICIES, rateLimitedActionState } from "@/lib/rate-limit";
 
 const deleteSchema = z.object({ confirmation: z.string().min(1) });
 const reverification = { level: "multi_factor", afterMinutes: 10 } as const;
@@ -11,6 +12,15 @@ export async function POST(request: Request) {
 
   const localUser = await db.user.findUnique({ where: { clerkId: authResult.userId } });
   if (!localUser || localUser.status !== "ACTIVE") return Response.json({ error: "Account not found." }, { status: 404 });
+
+  const rateLimit = await consumeUserMutation(localUser, RATE_LIMIT_POLICIES.accountDelete);
+  if (!rateLimit.allowed) {
+    const limited = rateLimitedActionState(rateLimit);
+    return Response.json(
+      { error: limited.message, retryAfterSeconds: limited.retryAfterSeconds, resetAt: limited.resetAt },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds), "Cache-Control": "private, no-store" } },
+    );
+  }
 
   let payload: unknown;
   try {

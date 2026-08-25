@@ -10,6 +10,7 @@ import { Markdown } from "@/components/markdown";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { Avatar } from "@/components/ui/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { RateLimitForm } from "@/components/ui/rate-limit-form";
 import { PostingPolicyBadge } from "@/components/forum/space-posting-policy";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
@@ -94,31 +95,31 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
           className="flex flex-wrap items-center gap-2 rounded-b-[17px] border-t px-5 py-3 sm:px-8"
           style={{ borderColor: "var(--line)", background: "var(--surface-soft)" }}
         >
-          <form action={toggleThreadVote}>
+          <RateLimitForm action={toggleThreadVote}>
             <input type="hidden" name="threadId" value={thread.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <button className={`button ${thread.votes?.length ? "button-primary" : "button-ghost"}`}>
+            <SubmitButton className={`button ${thread.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
               <ThumbsUp size={16} /> {thread._count.votes}
-            </button>
-          </form>
+            </SubmitButton>
+          </RateLimitForm>
           <span className="button button-ghost"><MessageCircle size={16} /> {thread._count.replies}</span>
-          <form action={toggleBookmark}>
+          <RateLimitForm action={toggleBookmark}>
             <input type="hidden" name="threadId" value={thread.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <button className={`button ${thread.bookmarks?.length ? "button-secondary" : "button-ghost"}`}>
+            <SubmitButton className={`button ${thread.bookmarks?.length ? "button-secondary" : "button-ghost"}`} pendingLabel="Updating…">
               <Bookmark size={16} /> {thread.bookmarks?.length ? "Saved" : "Save"}
-            </button>
-          </form>
+            </SubmitButton>
+          </RateLimitForm>
           <div className="ml-auto flex items-center gap-3">
             {viewer?.id === thread.authorId ? (
               <ContentMenu type="thread" id={thread.id} title={thread.title} body={thread.body} />
             ) : null}
             {viewer ? <ReportForm targetType="THREAD" targetId={thread.id} returnTo={returnTo} /> : null}
             {canModerate(viewer) ? (
-              <form action={toggleThreadLock}>
+              <RateLimitForm action={toggleThreadLock}>
                 <input type="hidden" name="threadId" value={thread.id} />
-                <button className="button button-ghost"><Lock size={15} /> {thread.isLocked ? "Unlock" : "Lock"}</button>
-              </form>
+                <SubmitButton className="button button-ghost" pendingLabel="Updating…"><Lock size={15} /> {thread.isLocked ? "Unlock" : "Lock"}</SubmitButton>
+              </RateLimitForm>
             ) : null}
           </div>
         </footer>
@@ -146,13 +147,13 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
                   </div>
                   <div className="mt-4"><Markdown>{reply.body}</Markdown></div>
                   <div className="mt-5 flex items-center gap-3">
-                    <form action={toggleReplyVote}>
+                    <RateLimitForm action={toggleReplyVote}>
                       <input type="hidden" name="replyId" value={reply.id} />
                       <input type="hidden" name="returnTo" value={returnTo} />
-                      <button className={`button !px-2.5 !py-1.5 ${reply.votes?.length ? "button-primary" : "button-ghost"}`}>
+                      <SubmitButton className={`button !px-2.5 !py-1.5 ${reply.votes?.length ? "button-primary" : "button-ghost"}`} pendingLabel="Updating…">
                         <ThumbsUp size={14} /> {reply._count.votes}
-                      </button>
-                    </form>
+                      </SubmitButton>
+                    </RateLimitForm>
                     {viewer?.id === reply.authorId ? (
                       <ContentMenu type="reply" id={reply.id} body={reply.body} />
                     ) : null}
@@ -183,13 +184,13 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
         ) : viewer ? (
           <>
             <h2 className="mb-4 text-lg font-black">Join the conversation</h2>
-            <form action={createReply}>
+            <RateLimitForm action={createReply}>
               <input type="hidden" name="threadId" value={thread.id} />
               <MarkdownEditor rows={6} placeholder="Write a thoughtful reply…" />
               <div className="mt-4 flex justify-end">
                 <SubmitButton pendingLabel="Posting…">Post reply</SubmitButton>
               </div>
-            </form>
+            </RateLimitForm>
           </>
         ) : (
           <div className="text-center">

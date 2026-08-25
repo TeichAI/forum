@@ -57,6 +57,14 @@ When `CLERK_WEBHOOK_SECRET` is blank or absent, the webhook endpoint is disabled
 
 Set `UPLOADTHING_TOKEN` to enable the image upload button and `/api/uploadthing`. If the token is absent or blank, the forum remains fully usable, new uploads are rejected, and existing UploadThing-hosted images are hidden without deleting their Markdown or attachment records. Externally hosted Markdown images continue to render.
 
+## Application rate limits
+
+The forum uses shared PostgreSQL token buckets for page reads and state-changing actions. Signed-in traffic is keyed by a one-way hash of the Clerk user ID; anonymous reads use a one-way hash of Railway's `X-Real-IP` header. Raw IP addresses are never persisted or logged.
+
+Set `RATE_LIMIT_HASH_SECRET` to a random value of at least 32 characters in every production environment. Keep the same value across all Railway replicas. `RATE_LIMITING_ENABLED=false` is an emergency fail-open kill switch; normal deployments should leave rate limiting enabled. Limiter storage failures also fail open and emit sanitized structured logs so a limiter incident does not take the forum offline.
+
+The checked-in policy favors comfortable bursts and continuously refills capacity rather than imposing fixed-window or daily quotas. Railway edge or host-level protections should still be enabled for malformed requests and volumetric attacks before they reach Next.js.
+
 ## Testing
 
 The test suite is split into deterministic layers:

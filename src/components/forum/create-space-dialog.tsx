@@ -4,6 +4,7 @@ import { useActionState, useId, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { createSpace, type SpaceActionState } from "@/actions/spaces";
 import { FieldMessage } from "@/components/auth/auth-controls";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import { SPACE_POSTING_POLICY_OPTIONS } from "@/components/forum/space-posting-policy";
 import { SubmitButton } from "@/components/ui/submit-button";
 
@@ -11,6 +12,8 @@ const initialState = { status: "idle" } satisfies SpaceActionState;
 
 function CreateSpaceForm() {
   const [state, action] = useActionState(createSpace, initialState);
+  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
+  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
 
   return (
     <form action={action} className="mt-6 space-y-5" noValidate>
@@ -25,8 +28,10 @@ function CreateSpaceForm() {
           role="alert"
         >
           {state.message}
+          {resetAt ? <div className="mt-1"><RateLimitCountdown resetAt={resetAt} onReady={onReady} /></div> : null}
         </div>
       )}
+      <fieldset disabled={coolingDown} className="contents">
       <div>
         <label className="label" htmlFor="new-space-name">Name</label>
         <input
@@ -105,6 +110,7 @@ function CreateSpaceForm() {
       <div className="flex justify-end">
         <SubmitButton pendingLabel="Creating…">Create space</SubmitButton>
       </div>
+      </fieldset>
     </form>
   );
 }

@@ -444,3 +444,15 @@ model Attachment {
   @@index([userId, createdAt(sort: Desc)])
   @@index([context, targetId])
 }
+
+model RateLimitBucket {
+  subject      String
+  scope        String
+  tokens       Float
+  lastRefillAt DateTime
+  expiresAt    DateTime
+  updatedAt    DateTime @updatedAt
+
+  @@id([subject, scope])
+  @@index([expiresAt])
+}

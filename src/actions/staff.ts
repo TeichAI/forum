@@ -6,11 +6,14 @@ import { z } from "zod";
 import { getVerifiedUserRole, requireAdmin, requireModerator } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canModerateRole } from "@/lib/moderation";
+import { consumeUserMutation, rateLimitedActionState } from "@/lib/rate-limit";
 import { slugify } from "@/lib/utils";
 
 export type StaffActionState = {
-  status: "idle" | "success" | "error";
+  status: "idle" | "success" | "error" | "rate_limited";
   message?: string;
+  retryAfterSeconds?: number;
+  resetAt?: string;
 };
 
 const initialError = (message: string): StaffActionState => ({ status: "error", message });
@@ -24,8 +27,15 @@ function refreshStaff(...paths: string[]) {
   for (const path of paths) revalidatePath(path);
 }
 
+async function staffLimit(user: { clerkId: string; role: string }): Promise<StaffActionState | null> {
+  const result = await consumeUserMutation(user);
+  return result.allowed ? null : rateLimitedActionState(result);
+}
+
 export async function claimCase(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = idSchema.safeParse(formData.get("caseId"));
   if (!parsed.success) return initialError("Choose a valid case.");
   const result = await db.$transaction(async (tx) => {
@@ -70,6 +80,8 @@ export async function claimCase(_state: StaffActionState, formData: FormData): P
 
 export async function setCasePriority(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = z.object({ caseId: idSchema, priority: z.nativeEnum(ReportPriority) }).safeParse({
     caseId: formData.get("caseId"), priority: formData.get("priority"),
   });
@@ -90,6 +102,8 @@ export async function setCasePriority(_state: StaffActionState, formData: FormDa
 
 export async function closeCase(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = z.object({
     caseId: idSchema,
     decision: z.enum(["RESOLVED", "DISMISSED", "REOPEN"]),
@@ -124,6 +138,8 @@ export async function closeCase(_state: StaffActionState, formData: FormData): P
 
 export async function addStaffNote(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = z.object({
     caseId: idSchema.optional(),
     userId: idSchema.optional(),
@@ -160,6 +176,8 @@ export async function addStaffNote(_state: StaffActionState, formData: FormData)
 
 export async function moderateContent(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = z.object({
     targetType: z.enum(["THREAD", "REPLY"]), targetId: idSchema,
     action: z.enum(["HIDE", "RESTORE", "LOCK", "UNLOCK", "PIN", "UNPIN"]), reason: reasonSchema,
@@ -205,6 +223,8 @@ export async function moderateContent(_state: StaffActionState, formData: FormDa
 
 export async function setMemberSuspension(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const moderator = await requireModerator();
+  const limited = await staffLimit(moderator);
+  if (limited) return limited;
   const parsed = z.object({
     userId: idSchema, action: z.enum(["SUSPEND", "UNSUSPEND"]),
     days: z.coerce.number().int().min(1).max(365).optional(), reason: reasonSchema,
@@ -247,6 +267,8 @@ const spaceInput = z.object({
 
 export async function saveSpace(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const admin = await requireAdmin();
+  const limited = await staffLimit(admin);
+  if (limited) return limited;
   const id = z.string().cuid().optional().safeParse(formData.get("spaceId") || undefined);
   const values = spaceInput.safeParse({
     name: formData.get("name"), description: formData.get("description"), color: formData.get("color"), postingPolicy: formData.get("postingPolicy"),
@@ -274,6 +296,8 @@ export async function saveSpace(_state: StaffActionState, formData: FormData): P
 
 export async function changeSpaceState(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const admin = await requireAdmin();
+  const limited = await staffLimit(admin);
+  if (limited) return limited;
   const parsed = z.object({ spaceId: idSchema, action: z.enum(["ARCHIVE", "RESTORE", "UP", "DOWN"]) }).safeParse({
     spaceId: formData.get("spaceId"), action: formData.get("action"),
   });
@@ -311,6 +335,8 @@ export async function changeSpaceState(_state: StaffActionState, formData: FormD
 
 export async function renameTag(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const admin = await requireAdmin();
+  const limited = await staffLimit(admin);
+  if (limited) return limited;
   const parsed = z.object({ tagId: idSchema, name: z.string().trim().min(1).max(50) }).safeParse({ tagId: formData.get("tagId"), name: formData.get("name") });
   if (!parsed.success) return initialError("Enter a valid tag name.");
   const duplicate = await db.tag.findFirst({ where: { name: { equals: parsed.data.name, mode: "insensitive" }, id: { not: parsed.data.tagId } } });
@@ -324,6 +350,8 @@ export async function renameTag(_state: StaffActionState, formData: FormData): P
 
 export async function mergeTag(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const admin = await requireAdmin();
+  const limited = await staffLimit(admin);
+  if (limited) return limited;
   const parsed = z.object({ sourceId: idSchema, destinationId: idSchema }).refine((value) => value.sourceId !== value.destinationId).safeParse({
     sourceId: formData.get("sourceId"), destinationId: formData.get("destinationId"),
   });
@@ -354,6 +382,8 @@ function parseList(value: FormDataEntryValue | null) {
 
 export async function saveModerationSettings(_state: StaffActionState, formData: FormData): Promise<StaffActionState> {
   const admin = await requireAdmin();
+  const limited = await staffLimit(admin);
+  if (limited) return limited;
   const parsed = z.object({
     reportReasons: z.array(z.string().min(2).max(80)).min(1).max(20),
     actionReasons: z.array(z.string().min(2).max(80)).min(1).max(20),

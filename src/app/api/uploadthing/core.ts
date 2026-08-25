@@ -2,6 +2,7 @@ import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { consumeUserMutation, RATE_LIMIT_POLICIES, rateLimitedActionState } from "@/lib/rate-limit";
 
 const f = createUploadthing();
 
@@ -10,6 +11,8 @@ export const ourFileRouter = {
     .middleware(async () => {
       const user = await requireUser();
       if (!user) throw new UploadThingError("Unauthorized");
+      const rateLimit = await consumeUserMutation(user, RATE_LIMIT_POLICIES.upload);
+      if (!rateLimit.allowed) throw new UploadThingError(rateLimitedActionState(rateLimit).message);
       return { userId: user.id };
     })
     .onUploadComplete(async ({ metadata, file }) => {

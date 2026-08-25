@@ -8,6 +8,7 @@ import { ArrowRight, X } from "lucide-react";
 import { createThread } from "@/actions/forum";
 import { MarkdownEditorClient } from "@/components/markdown-editor-client";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { RateLimitForm } from "@/components/ui/rate-limit-form";
 import type { ForumRole } from "@/lib/roles";
 import { canStartDiscussion } from "@/lib/space-posting-permissions";
 
@@ -135,7 +136,7 @@ export function NewThreadDialogProvider({
             </button>
           </div>
 
-          <form key={draftKey} ref={formRef} action={createThread} className="space-y-5 px-5 py-5 sm:px-7 sm:py-6">
+          <RateLimitForm key={draftKey} ref={formRef} action={createThread} className="space-y-5 px-5 py-5 sm:px-7 sm:py-6">
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <label className="label !mb-0" htmlFor="new-thread-title">Title</label>
@@ -215,7 +216,7 @@ export function NewThreadDialogProvider({
               <p className="text-xs leading-5 muted">By publishing, you agree to follow community guidelines.</p>
               <SubmitButton pendingLabel="Publishing…">Publish discussion <ArrowRight size={16} aria-hidden /></SubmitButton>
             </div>
-          </form>
+          </RateLimitForm>
         </dialog>
       ) : null}
     </NewThreadDialogContext.Provider>

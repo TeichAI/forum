@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { updateAccountProfile, type AccountActionState } from "@/actions/account";
 import { FieldMessage } from "@/components/auth/auth-controls";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 import { SubmitButton } from "@/components/ui/submit-button";
 
 type ProfileSettingsProps = {
@@ -13,6 +14,8 @@ type ProfileSettingsProps = {
 
 export function ProfileSettings({ displayName, username, bio }: ProfileSettingsProps) {
   const [state, action] = useActionState(updateAccountProfile, { status: "idle" } satisfies AccountActionState);
+  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
+  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
 
   return (
     <section className="card p-6 sm:p-8" aria-labelledby="profile-settings-heading">
@@ -31,9 +34,11 @@ export function ProfileSettings({ displayName, username, bio }: ProfileSettingsP
           role={state.status === "error" ? "alert" : "status"}
         >
           {state.message}
+          {resetAt ? <div className="mt-1"><RateLimitCountdown resetAt={resetAt} onReady={onReady} /></div> : null}
         </div>
       )}
       <form action={action} className="space-y-5" noValidate>
+        <fieldset disabled={coolingDown} className="contents">
         <div>
           <label className="label" htmlFor="displayName">Display name</label>
           <input className="input" id="displayName" name="displayName" defaultValue={displayName} minLength={1} maxLength={60} required aria-invalid={Boolean(state.fieldErrors?.displayName)} aria-describedby={state.fieldErrors?.displayName ? "display-name-error" : undefined} />
@@ -54,6 +59,7 @@ export function ProfileSettings({ displayName, username, bio }: ProfileSettingsP
           <FieldMessage id="bio-error">{state.fieldErrors?.bio}</FieldMessage>
         </div>
         <div className="flex justify-end"><SubmitButton pendingLabel="Saving…">Save profile</SubmitButton></div>
+        </fieldset>
       </form>
     </section>
   );

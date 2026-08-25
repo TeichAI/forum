@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   deleteUser: vi.fn(),
   findUnique: vi.fn(),
   updateMany: vi.fn(),
+  consumeUserMutation: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -16,6 +17,10 @@ vi.mock("@clerk/nextjs/server", () => ({
   reverificationErrorResponse: (config: unknown) => Response.json({ clerk_error: { type: "forbidden", reason: "reverification-error", metadata: { reverification: config } } }, { status: 403 }),
 }));
 vi.mock("@/lib/db", () => ({ db: { user: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
+});
 
 const user = { id: "local_1", clerkId: "user_1", username: "owen", status: "ACTIVE" };
 const request = (body: unknown = { confirmation: "owen" }) => new Request("http://localhost/api/account/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -29,9 +34,22 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ deleteSelfEnabled: true });
   mocks.deleteUser.mockResolvedValue({ id: "user_1" });
   mocks.updateMany.mockResolvedValue({ count: 1 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
 });
 
 describe("POST /api/account/delete", () => {
+  it("returns a standards-based 429 before parsing or deleting when limited", async () => {
+    const { POST } = await import("./route");
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 45, resetAt: "2026-08-25T12:00:45.000Z", remaining: 0 });
+    const response = await POST(request());
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("45");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({ retryAfterSeconds: 45, resetAt: "2026-08-25T12:00:45.000Z" }));
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
   it("requires authentication, an active local account, and valid JSON", async () => {
     const { POST } = await import("./route");
     mocks.auth.mockResolvedValueOnce({ userId: null, has: mocks.has });

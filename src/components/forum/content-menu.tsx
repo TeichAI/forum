@@ -2,6 +2,7 @@ import { deleteReply, deleteThread, updateReply, updateThread } from "@/actions/
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { EditorDialog } from "@/components/ui/editor-dialog";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { RateLimitForm } from "@/components/ui/rate-limit-form";
 
 export function ContentMenu({ type, id, body, title }: { type: "thread" | "reply"; id: string; body: string; title?: string }) {
   const update = type === "thread" ? updateThread : updateReply;
@@ -9,7 +10,7 @@ export function ContentMenu({ type, id, body, title }: { type: "thread" | "reply
   const idName = type === "thread" ? "threadId" : "replyId";
   return (
     <EditorDialog title={`Edit ${type}`}>
-      <form action={update} className="space-y-4">
+      <RateLimitForm action={update} className="space-y-4">
         <input type="hidden" name={idName} value={id} />
         {type === "thread" && (
           <div>
@@ -19,13 +20,13 @@ export function ContentMenu({ type, id, body, title }: { type: "thread" | "reply
         )}
         <MarkdownEditor initialValue={body} rows={7} />
         <div className="flex justify-end"><SubmitButton pendingLabel="Saving…">Save changes</SubmitButton></div>
-      </form>
+      </RateLimitForm>
       <hr className="divider my-5" />
-      <form action={remove}>
+      <RateLimitForm action={remove}>
         <input type="hidden" name={idName} value={id} />
         <p className="mb-3 text-sm muted">Deletion hides this {type} from the community while preserving the moderation record.</p>
         <SubmitButton className="button button-danger" pendingLabel="Deleting…">Delete {type}</SubmitButton>
-      </form>
+      </RateLimitForm>
     </EditorDialog>
   );
 }

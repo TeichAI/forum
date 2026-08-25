@@ -7,12 +7,28 @@ import { z } from "zod";
 import { getVerifiedUserRole, requireModerator, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canModerateRole } from "@/lib/moderation";
+import {
+  consumeUserMutation,
+  conversationMessagePolicy,
+  RATE_LIMIT_POLICIES,
+  rateLimitedActionState,
+  type RateLimitPolicy,
+} from "@/lib/rate-limit";
 import { canComment, canStartDiscussion } from "@/lib/space-posting-permissions";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { parseMentions, safeReturnPath, slugify, threadSlug } from "@/lib/utils";
 
 const titleSchema = z.string().trim().min(5).max(160);
 const bodySchema = z.string().trim().min(2).max(50_000);
+
+async function mutationLimit(
+  user: { clerkId: string; role: string },
+  policy?: RateLimitPolicy,
+  additional: RateLimitPolicy[] = [],
+) {
+  const result = await consumeUserMutation(user, policy, additional);
+  return result.allowed ? null : rateLimitedActionState(result);
+}
 
 async function claimAttachments(body: string, userId: string, context: "THREAD" | "REPLY" | "MESSAGE", targetId: string) {
   if (!uploadsEnabled()) return;
@@ -34,6 +50,8 @@ async function notifyMentions(body: string, actorId: string, data: { threadId?: 
 
 export async function createThread(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.thread);
+  if (limited) return limited;
   const title = titleSchema.parse(formData.get("title"));
   const body = bodySchema.parse(formData.get("body"));
   const categoryId = z.string().cuid().parse(formData.get("categoryId"));
@@ -67,6 +85,8 @@ export async function createThread(formData: FormData) {
 
 export async function createReply(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.reply);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const body = bodySchema.parse(formData.get("body"));
   const thread = await db.thread.findUnique({
@@ -101,6 +121,8 @@ export async function createReply(formData: FormData) {
 
 export async function toggleThreadVote(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const thread = await db.thread.findUnique({ where: { id: threadId }, select: { authorId: true, status: true } });
@@ -117,6 +139,8 @@ export async function toggleThreadVote(formData: FormData) {
 
 export async function toggleReplyVote(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, select: { authorId: true, threadId: true, status: true } });
@@ -133,6 +157,8 @@ export async function toggleReplyVote(formData: FormData) {
 
 export async function toggleBookmark(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   const existing = await db.bookmark.findUnique({ where: { userId_threadId: { userId: user.id, threadId } } });
@@ -143,6 +169,8 @@ export async function toggleBookmark(formData: FormData) {
 
 export async function toggleFollow(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const followingId = z.string().cuid().parse(formData.get("userId"));
   const returnTo = safeReturnPath(formData.get("returnTo"));
   if (followingId === user.id) throw new Error("You cannot follow yourself");
@@ -157,6 +185,8 @@ export async function toggleFollow(formData: FormData) {
 
 export async function updateThread(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const title = titleSchema.parse(formData.get("title"));
   const body = bodySchema.parse(formData.get("body"));
@@ -170,6 +200,8 @@ export async function updateThread(formData: FormData) {
 
 export async function deleteThread(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
   if (!thread || thread.authorId !== user.id) throw new Error("You cannot delete this discussion");
@@ -180,6 +212,8 @@ export async function deleteThread(formData: FormData) {
 
 export async function updateReply(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user);
+  if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const body = bodySchema.parse(formData.get("body"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
@@ -191,6 +225,8 @@ export async function updateReply(formData: FormData) {
 
 export async function deleteReply(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user);
+  if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
   if (!reply || reply.authorId !== user.id) throw new Error("You cannot delete this reply");
@@ -200,6 +236,8 @@ export async function deleteReply(formData: FormData) {
 
 export async function startConversation(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const targetId = z.string().cuid().parse(formData.get("userId"));
   if (targetId === user.id) throw new Error("You cannot message yourself");
   const blocked = await db.block.findFirst({
@@ -218,6 +256,8 @@ export async function startConversation(formData: FormData) {
 export async function sendMessage(formData: FormData) {
   const user = await requireUser();
   const conversationId = z.string().cuid().parse(formData.get("conversationId"));
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.message, [conversationMessagePolicy(conversationId)]);
+  if (limited) return limited;
   const body = bodySchema.parse(formData.get("body"));
   const conversation = await db.conversation.findUnique({ where: { id: conversationId } });
   if (!conversation || (conversation.memberOneId !== user.id && conversation.memberTwoId !== user.id)) throw new Error("Conversation not found");
@@ -236,6 +276,8 @@ export async function sendMessage(formData: FormData) {
 
 export async function blockMember(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   const blockedId = z.string().cuid().parse(formData.get("userId"));
   if (blockedId === user.id) throw new Error("You cannot block yourself");
   await db.block.upsert({ where: { blockerId_blockedId: { blockerId: user.id, blockedId } }, update: {}, create: { blockerId: user.id, blockedId } });
@@ -244,6 +286,8 @@ export async function blockMember(formData: FormData) {
 
 export async function reportContent(formData: FormData) {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.report);
+  if (limited) return limited;
   const targetType = z.enum([ReportTargetType.THREAD, ReportTargetType.REPLY, ReportTargetType.USER, ReportTargetType.MESSAGE]).parse(formData.get("targetType"));
   const targetId = z.string().cuid().parse(formData.get("targetId"));
   const reason = z.string().trim().min(3).max(80).parse(formData.get("reason"));
@@ -273,12 +317,16 @@ export async function reportContent(formData: FormData) {
 
 export async function markNotificationsRead() {
   const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction);
+  if (limited) return limited;
   await db.notification.updateMany({ where: { recipientId: user.id, readAt: null }, data: { readAt: new Date() } });
   revalidatePath("/notifications");
 }
 
 export async function moderateReport(formData: FormData) {
   const moderator = await requireModerator();
+  const limited = await mutationLimit(moderator);
+  if (limited) return limited;
   const reportId = z.string().cuid().parse(formData.get("reportId"));
   const decision = z.enum(["RESOLVED", "DISMISSED"]).parse(formData.get("decision"));
   const resolution = z.string().trim().min(2).max(500).parse(formData.get("resolution"));
@@ -302,6 +350,8 @@ export async function moderateReport(formData: FormData) {
 
 export async function toggleThreadLock(formData: FormData) {
   const moderator = await requireModerator();
+  const limited = await mutationLimit(moderator);
+  if (limited) return limited;
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
   if (!thread) throw new Error("Thread not found");
@@ -316,6 +366,8 @@ export async function toggleThreadLock(formData: FormData) {
 
 export async function setContentVisibility(formData: FormData) {
   const moderator = await requireModerator();
+  const limited = await mutationLimit(moderator);
+  if (limited) return limited;
   const targetType = z.enum(["THREAD", "REPLY"]).parse(formData.get("targetType"));
   const targetId = z.string().cuid().parse(formData.get("targetId"));
   const hide = formData.get("hide") === "true";
@@ -335,6 +387,8 @@ export async function setContentVisibility(formData: FormData) {
 
 export async function suspendMember(formData: FormData) {
   const moderator = await requireModerator();
+  const limited = await mutationLimit(moderator);
+  if (limited) return limited;
   const userId = z.string().cuid().parse(formData.get("userId"));
   const days = z.coerce.number().int().min(1).max(365).parse(formData.get("days") ?? 7);
   const reason = z.string().trim().min(3).max(500).parse(formData.get("reason"));
