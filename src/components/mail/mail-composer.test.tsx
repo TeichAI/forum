@@ -163,4 +163,72 @@ describe("MailComposer", () => {
     expect(mocks.remove).toHaveBeenCalled();
     expect(mocks.push).toHaveBeenCalledWith("/mail");
   });
+
+  it("waits for initial autosave creation before discarding the resulting draft", async () => {
+    vi.useFakeTimers();
+    const pending = deferred<{ status: "saved"; draftId: string; savedAt: string }>();
+    mocks.save.mockReturnValueOnce(pending.promise);
+    render(<MailComposer role="MEMBER" initialRecipients={[recipient]} uploadsEnabled={false} />);
+    fireEvent.change(screen.getByPlaceholderText("Subject"), { target: { value: "Race-safe" } });
+    fireEvent.change(screen.getByLabelText("Mail body"), { target: { value: "Draft body" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(mocks.remove).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pending.resolve({ status: "saved", draftId: "cm000000000000000000000099", savedAt: "now" });
+      await Promise.resolve();
+    });
+    expect(mocks.remove).toHaveBeenCalledTimes(1);
+    expect((mocks.remove.mock.calls[0]![0] as FormData).get("draftId")).toBe("cm000000000000000000000099");
+    expect(mocks.push).toHaveBeenCalledWith("/mail");
+  });
+
+  it("adds the asynchronously-created draft id before sending", async () => {
+    vi.useFakeTimers();
+    const pending = deferred<{ status: "saved"; draftId: string; savedAt: string }>();
+    mocks.save.mockReturnValueOnce(pending.promise);
+    render(<MailComposer role="MEMBER" initialRecipients={[recipient]} uploadsEnabled={false} />);
+    fireEvent.change(screen.getByPlaceholderText("Subject"), { target: { value: "Send safely" } });
+    fireEvent.change(screen.getByLabelText("Mail body"), { target: { value: "Mail body" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    fireEvent.click(screen.getByRole("button", { name: "Send mail" }));
+    expect(mocks.send).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pending.resolve({ status: "saved", draftId: "cm000000000000000000000098", savedAt: "now" });
+      await Promise.resolve();
+    });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+    expect((mocks.send.mock.calls[0]![0] as FormData).get("draftId")).toBe("cm000000000000000000000098");
+  });
+
+  it("queues edits made while an autosave is still running", async () => {
+    vi.useFakeTimers();
+    const first = deferred<{ status: "saved"; draftId: string; savedAt: string }>();
+    mocks.save.mockReturnValueOnce(first.promise).mockResolvedValueOnce({ status: "saved", draftId: "cm000000000000000000000097", savedAt: "later" });
+    render(<MailComposer role="MEMBER" initialRecipients={[recipient]} uploadsEnabled={false} />);
+    const subject = screen.getByPlaceholderText("Subject");
+    const body = screen.getByLabelText("Mail body");
+    fireEvent.change(subject, { target: { value: "First version" } });
+    fireEvent.change(body, { target: { value: "First body" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+
+    fireEvent.change(subject, { target: { value: "Latest version" } });
+    fireEvent.change(body, { target: { value: "Latest body" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve({ status: "saved", draftId: "cm000000000000000000000097", savedAt: "now" });
+      await Promise.resolve();
+    });
+
+    expect(mocks.save).toHaveBeenCalledTimes(2);
+    const queued = mocks.save.mock.calls[1]![0] as FormData;
+    expect(queued.get("draftId")).toBe("cm000000000000000000000097");
+    expect(queued.get("subject")).toBe("Latest version");
+    expect(queued.get("body")).toBe("Latest body");
+    expect(screen.getByRole("status")).toHaveTextContent("Draft saved");
+  });
 });

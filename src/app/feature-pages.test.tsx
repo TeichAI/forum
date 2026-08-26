@@ -6,15 +6,21 @@ const mocks = vi.hoisted(() => ({
   viewer: vi.fn(), requireUser: vi.fn(), requireModerator: vi.fn(), notFound: vi.fn(), redirect: vi.fn(), listThreads: vi.fn(),
   thread: vi.fn(), user: vi.fn(), notifications: vi.fn(), reports: vi.fn(), actions: vi.fn(),
   notificationUpdate: vi.fn(),
+  replies: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser, requireModerator: mocks.requireModerator }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
-vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads, canModerate: (user: { role?: string } | null) => user?.role === "MODERATOR" || user?.role === "ADMIN" }));
+vi.mock("@/lib/queries", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/queries")>(),
+  listThreadsPage: mocks.listThreads,
+  canModerate: (user: { role?: string } | null) => user?.role === "MODERATOR" || user?.role === "ADMIN",
+}));
 vi.mock("@/lib/db", () => ({ db: {
-  thread: { findUnique: mocks.thread }, user: { findUnique: mocks.user },
+  thread: { findUnique: mocks.thread, findFirst: mocks.thread }, user: { findUnique: mocks.user, findFirst: mocks.user },
   notification: { findMany: mocks.notifications, updateMany: mocks.notificationUpdate }, report: { findMany: mocks.reports },
   moderationAction: { findMany: mocks.actions },
 } }));
+vi.mock("@/lib/reply-pagination", () => ({ REPLY_BRANCH_PAGE_SIZE: 100, listReplyBranches: mocks.replies }));
 vi.mock("@/components/markdown", () => ({ Markdown: ({ children }: { children: string }) => <div>{children}</div> }));
 vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Editor" /> }));
 vi.mock("@/components/markdown-editor-client", () => ({ MarkdownEditorClient: ({ placeholder }: { placeholder: string }) => <textarea name="body" placeholder={placeholder} /> }));
@@ -46,7 +52,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
-  mocks.listThreads.mockResolvedValue([]);
+  mocks.listThreads.mockResolvedValue({ items: [], nextCursor: null });
+  mocks.replies.mockResolvedValue({ items: thread.replies, nextCursor: null, continuations: [], selectedBranchId: null });
   mocks.notificationUpdate.mockReturnValue(Promise.resolve({ count: 0 }));
 });
 
@@ -54,7 +61,7 @@ describe("discussion page", () => {
   it("generates fallback and populated metadata", async () => {
     mocks.thread.mockResolvedValueOnce({ title: "Topic", body: "Long description" }).mockResolvedValueOnce(null);
     await expect(threadMetadata({ params: Promise.resolve({ slug: "topic" }) })).resolves.toEqual({ title: "Topic", description: "Long description" });
-    await expect(threadMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Discussion", description: undefined });
+    await expect(threadMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Content unavailable", description: "This content is unavailable.", robots: { index: false, follow: false } });
   });
 
   it("renders a populated signed-out discussion and reply prompt accessibly", async () => {
@@ -76,12 +83,14 @@ describe("discussion page", () => {
 
   it("renders member ownership, saved/reaction states, and reply controls", async () => {
     mocks.viewer.mockResolvedValue(member);
-    mocks.thread.mockResolvedValue({
+    const savedThread = {
       ...thread,
       upvotes: [{}],
       bookmarks: [{}],
       replies: [{ ...thread.replies[0], dislikes: [{}] }],
-    });
+    };
+    mocks.thread.mockResolvedValue(savedThread);
+    mocks.replies.mockResolvedValue({ items: savedThread.replies, nextCursor: null, continuations: [], selectedBranchId: null });
     render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByText("Saved")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upvote thread, 2 upvotes" })).toHaveAttribute("aria-pressed", "true");
@@ -107,10 +116,12 @@ describe("discussion page", () => {
 
   it("replaces replies with an admin-only notice while keeping thread locks absolute", async () => {
     mocks.viewer.mockResolvedValue({ ...member, role: "MODERATOR" });
-    mocks.thread.mockResolvedValue({
+    const nestedThread = {
       ...thread,
       category: { ...thread.category, postingPolicy: "ADMIN_ONLY" },
-    });
+    };
+    mocks.thread.mockResolvedValue(nestedThread);
+    mocks.replies.mockResolvedValue({ items: nestedThread.replies, nextCursor: null, continuations: [], selectedBranchId: null });
     const { rerender } = render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByLabelText("Admin only")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Replies are limited to admins" })).toBeInTheDocument();
@@ -154,7 +165,7 @@ describe("discussion page", () => {
 
   it("renders nested branches, stable anchors, parent labels, and removed-parent placeholders", async () => {
     mocks.viewer.mockResolvedValue(null);
-    mocks.thread.mockResolvedValue({
+    const nestedThread = {
       ...thread,
       _count: { ...thread._count, replies: 2 },
       replies: [
@@ -162,7 +173,9 @@ describe("discussion page", () => {
         { ...thread.replies[0], id: "nested", body: "Visible descendant", status: "PUBLISHED", parentReplyId: "deleted-parent", author: member, authorId: member.id },
         { ...thread.replies[0], id: "hidden", body: "Secret hidden body", status: "HIDDEN", parentReplyId: "nested", author: other },
       ],
-    });
+    };
+    mocks.thread.mockResolvedValue(nestedThread);
+    mocks.replies.mockResolvedValue({ items: nestedThread.replies, nextCursor: null, continuations: [], selectedBranchId: null });
 
     render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
     expect(screen.getByText("Reply deleted")).toBeInTheDocument();
@@ -174,6 +187,23 @@ describe("discussion page", () => {
     expect(document.querySelector("#reply-nested")).toBeInTheDocument();
     expect(document.querySelector('[data-depth="2"]')).toHaveAttribute("data-indent-mobile", "2");
   });
+
+  it("links to reply branch and root continuations", async () => {
+    mocks.viewer.mockResolvedValue(null);
+    mocks.thread.mockResolvedValue(thread);
+    mocks.replies.mockResolvedValue({
+      items: thread.replies,
+      nextCursor: "next roots",
+      continuations: [{ rootId: "reply", page: 1 }],
+      selectedBranchId: "reply",
+    });
+
+    render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+
+    expect(screen.getByRole("link", { name: "Continue this branch" })).toHaveAttribute("href", "/t/topic?branch=reply&branchPage=1");
+    expect(screen.getByRole("link", { name: "More reply branches" })).toHaveAttribute("href", "/t/topic?replyCursor=next%20roots");
+    expect(screen.getByRole("link", { name: "Back to reply branches" })).toHaveAttribute("href", "/t/topic#replies");
+  });
 });
 
 describe("member profile", () => {
@@ -181,7 +211,7 @@ describe("member profile", () => {
     mocks.user.mockResolvedValue({ ...other, _count: { followers: 2, following: 3, threads: 4, replies: 5 }, followers: [] });
     await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual({ title: "Other" });
     mocks.viewer.mockResolvedValue(admin);
-    mocks.listThreads.mockResolvedValue([{ id: "thread", title: "Recent topic" }]);
+    mocks.listThreads.mockResolvedValue({ items: [{ id: "thread", title: "Recent topic" }], nextCursor: null });
     render(await MemberPage({ params: Promise.resolve({ id: "other" }) }));
     expect(screen.getByRole("button", { name: "Follow" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Mail" })).toHaveAttribute("href", "/mail/compose?to=other");
@@ -199,11 +229,12 @@ describe("member profile", () => {
 
   it("uses fallback metadata and rejects missing or deleted members", async () => {
     mocks.user.mockResolvedValueOnce(null);
-    await expect(memberMetadata({ params: Promise.resolve({ id: "missing" }) })).resolves.toEqual({ title: "Member" });
+    await expect(memberMetadata({ params: Promise.resolve({ id: "missing" }) })).resolves.toEqual({ title: "Content unavailable", description: "This content is unavailable.", robots: { index: false, follow: false } });
     mocks.viewer.mockResolvedValue(null);
-    mocks.user.mockResolvedValueOnce(null).mockResolvedValueOnce({ ...member, status: "DELETED" });
+    mocks.user.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     await expect(MemberPage({ params: Promise.resolve({ id: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
     await expect(MemberPage({ params: Promise.resolve({ id: "member" }) })).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mocks.user).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: "member", status: "ACTIVE" } }));
   });
 });
 

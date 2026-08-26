@@ -7,9 +7,9 @@ const mocks = vi.hoisted(() => {
     moderationAction: { create: method() },
     notification: { create: method() },
     staffNote: { create: method() },
-    user: { findUnique: method(), update: method() },
-    thread: { findUnique: method(), update: method() },
-    reply: { findUnique: method(), update: method() },
+    user: { findUnique: method(), update: method(), updateMany: method() },
+    thread: { findUnique: method(), update: method(), updateMany: method() },
+    reply: { findUnique: method(), update: method(), updateMany: method() },
     category: { findUnique: method(), update: method(), findFirst: method(), aggregate: method(), upsert: method() },
     tag: { findFirst: method(), update: method(), findUnique: method(), delete: method() },
     tagAlias: { updateMany: method(), upsert: method() },
@@ -67,6 +67,9 @@ beforeEach(() => {
   mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
   mocks.db.moderationCase.updateMany.mockResolvedValue({ count: 1 });
+  mocks.db.user.updateMany.mockResolvedValue({ count: 1 });
+  mocks.db.thread.updateMany.mockResolvedValue({ count: 1 });
+  mocks.db.reply.updateMany.mockResolvedValue({ count: 1 });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => typeof input === "function" ? input(mocks.db) : Promise.all(input as Promise<unknown>[]));
 });
 
@@ -141,22 +144,32 @@ describe("staff case workflows", () => {
   it("closes and reopens cases with required reasons", async () => {
     mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "IN_REVIEW", assignedToId: ids.moderator, targetType: "USER", targetId: ids.member });
     await expect(closeCase({ status: "idle" }, form({ caseId: ids.case, decision: "RESOLVED", reason: "Reviewed evidence" }))).resolves.toEqual({ status: "success", message: "Case resolved." });
-    expect(mocks.db.moderationCase.update).toHaveBeenCalledWith({ where: { id: ids.case }, data: expect.objectContaining({ status: "RESOLVED", resolution: "Reviewed evidence", closedAt: expect.any(Date) }) });
+    expect(mocks.db.moderationCase.updateMany).toHaveBeenCalledWith({ where: { id: ids.case, status: { in: ["OPEN", "IN_REVIEW"] } }, data: expect.objectContaining({ status: "RESOLVED", resolution: "Reviewed evidence", closedAt: expect.any(Date) }) });
 
     mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "RESOLVED", assignedToId: ids.moderator, targetType: "USER", targetId: ids.member });
     await expect(closeCase({ status: "idle" }, form({ caseId: ids.case, decision: "REOPEN", reason: "New evidence" }))).resolves.toEqual({ status: "success", message: "Case reopened." });
-    expect(mocks.db.moderationCase.update).toHaveBeenLastCalledWith({ where: { id: ids.case }, data: { status: "OPEN", resolution: null, closedAt: null, assignedToId: null } });
+    expect(mocks.db.moderationCase.updateMany).toHaveBeenLastCalledWith({ where: { id: ids.case, status: { in: ["RESOLVED", "DISMISSED"] } }, data: { status: "OPEN", resolution: null, closedAt: null, assignedToId: null } });
   });
 
   it("updates priority and appends notes to cases and eligible members", async () => {
-    mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, targetType: "THREAD", targetId: ids.target });
+    mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "OPEN", priority: "NORMAL", targetType: "THREAD", targetId: ids.target });
     await expect(setCasePriority({ status: "idle" }, form({ caseId: ids.case, priority: "URGENT" }))).resolves.toEqual({ status: "success", message: "Priority updated." });
-    expect(mocks.db.moderationCase.update).toHaveBeenCalledWith({ where: { id: ids.case }, data: { priority: "URGENT" } });
+    expect(mocks.db.moderationCase.updateMany).toHaveBeenCalledWith({ where: { id: ids.case, status: { in: ["OPEN", "IN_REVIEW"] }, priority: { not: "URGENT" } }, data: { priority: "URGENT" } });
 
     await expect(addStaffNote({ status: "idle" }, form({ caseId: ids.case, body: "Case context" }))).resolves.toEqual({ status: "success", message: "Private staff note added." });
     mocks.db.user.findUnique.mockResolvedValue({ id: ids.member, clerkId: "member", role: "MEMBER" });
     await expect(addStaffNote({ status: "idle" }, form({ userId: ids.member, body: "Member context" }))).resolves.toEqual({ status: "success", message: "Private staff note added." });
     expect(mocks.db.staffNote.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("freezes closed priorities and rejects repeated or raced priority changes", async () => {
+    mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "RESOLVED", priority: "NORMAL" });
+    await expect(setCasePriority({ status: "idle" }, form({ caseId: ids.case, priority: "HIGH" }))).resolves.toEqual({ status: "error", message: "Closed-case priority cannot be changed." });
+    mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "OPEN", priority: "HIGH" });
+    await expect(setCasePriority({ status: "idle" }, form({ caseId: ids.case, priority: "HIGH" }))).resolves.toEqual({ status: "error", message: "Choose a different priority." });
+    mocks.db.moderationCase.findUnique.mockResolvedValue({ id: ids.case, status: "OPEN", priority: "NORMAL", targetType: "THREAD", targetId: ids.target });
+    mocks.db.moderationCase.updateMany.mockResolvedValue({ count: 0 });
+    await expect(setCasePriority({ status: "idle" }, form({ caseId: ids.case, priority: "HIGH" }))).resolves.toEqual({ status: "error", message: "The case changed before your update. Refresh and try again." });
   });
 
   it("validates staff-note targets and protected users", async () => {
@@ -179,8 +192,28 @@ describe("staff moderation boundaries", () => {
     mocks.db.thread.findUnique.mockResolvedValue({ id: ids.target, slug: "topic", authorId: ids.member, status: "PUBLISHED", isLocked: false, isPinned: false });
     const result = await moderateContent({ status: "idle" }, form({ targetType: "THREAD", targetId: ids.target, action: "HIDE", reason: "Unsafe content" }));
     expect(result.status).toBe("success");
-    expect(mocks.db.thread.update).toHaveBeenCalledWith({ where: { id: ids.target }, data: { status: "HIDDEN" } });
+    expect(mocks.db.thread.updateMany).toHaveBeenCalledWith({ where: { id: ids.target, status: "PUBLISHED" }, data: { status: "HIDDEN" } });
     expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ recipientId: ids.member, moderationActionId: "action-1" }) });
+  });
+
+  it.each([
+    ["LOCK", { status: "PUBLISHED", isLocked: false, isPinned: false }, { isLocked: false }, { isLocked: true }],
+    ["UNLOCK", { status: "PUBLISHED", isLocked: true, isPinned: false }, { isLocked: true }, { isLocked: false }],
+    ["PIN", { status: "PUBLISHED", isLocked: false, isPinned: false }, { isPinned: false }, { isPinned: true }],
+    ["UNPIN", { status: "PUBLISHED", isLocked: false, isPinned: true }, { isPinned: true }, { isPinned: false }],
+  ] as const)("applies %s with a conditional content transition", async (action, state, expected, data) => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.target, slug: "topic", authorId: ids.member, ...state });
+    await expect(moderateContent({ status: "idle" }, form({ targetType: "THREAD", targetId: ids.target, action, reason: "State change" }))).resolves.toEqual(expect.objectContaining({ status: "success" }));
+    expect(mocks.db.thread.updateMany).toHaveBeenCalledWith({ where: { id: ids.target, ...expected }, data });
+  });
+
+  it("rejects moderation no-ops and conditional-update conflicts without auditing", async () => {
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.target, slug: "topic", authorId: ids.member, status: "HIDDEN", isLocked: false, isPinned: false });
+    await expect(moderateContent({ status: "idle" }, form({ targetType: "THREAD", targetId: ids.target, action: "HIDE", reason: "No-op" }))).resolves.toEqual({ status: "error", message: "That moderation action would not change the content." });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.target, slug: "topic", authorId: ids.member, status: "PUBLISHED", isLocked: false, isPinned: false });
+    mocks.db.thread.updateMany.mockResolvedValue({ count: 0 });
+    await expect(moderateContent({ status: "idle" }, form({ targetType: "THREAD", targetId: ids.target, action: "LOCK", reason: "Conflict" }))).resolves.toEqual({ status: "error", message: "The content changed before your update. Refresh and try again." });
+    expect(mocks.db.moderationAction.create).not.toHaveBeenCalled();
   });
 
   it("prevents moderators from suspending staff and lets admins suspend moderators", async () => {
@@ -191,16 +224,16 @@ describe("staff moderation boundaries", () => {
     mocks.requireModerator.mockResolvedValue(admin);
     mocks.canModerateRole.mockReturnValue(true);
     await expect(setMemberSuspension({ status: "idle" }, form({ userId: ids.member, action: "SUSPEND", days: "7", reason: "Repeated abuse" }))).resolves.toEqual({ status: "success", message: "Member suspended." });
-    expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.member }, data: expect.objectContaining({ status: "SUSPENDED", suspendedUntil: expect.any(Date) }) });
+    expect(mocks.db.user.updateMany).toHaveBeenCalledWith({ where: { id: ids.member, status: "ACTIVE" }, data: expect.objectContaining({ status: "SUSPENDED", suspendedUntil: expect.any(Date) }) });
 
     await expect(setMemberSuspension({ status: "idle" }, form({ userId: ids.member, action: "UNSUSPEND", reason: "Appeal accepted" }))).resolves.toEqual({ status: "success", message: "Member restored." });
-    expect(mocks.db.user.update).toHaveBeenLastCalledWith({ where: { id: ids.member }, data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null } });
+    expect(mocks.db.user.updateMany).toHaveBeenLastCalledWith({ where: { id: ids.member, status: "SUSPENDED" }, data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null } });
   });
 
   it("restores replies but refuses to restore member-deleted content", async () => {
     mocks.db.reply.findUnique.mockResolvedValue({ id: ids.target, authorId: ids.member, status: "HIDDEN", thread: { id: "thread-1", slug: "topic" } });
     await expect(moderateContent({ status: "idle" }, form({ targetType: "REPLY", targetId: ids.target, action: "RESTORE", reason: "Appeal accepted" }))).resolves.toEqual(expect.objectContaining({ status: "success" }));
-    expect(mocks.db.reply.update).toHaveBeenCalledWith({ where: { id: ids.target }, data: { status: "PUBLISHED" } });
+    expect(mocks.db.reply.updateMany).toHaveBeenCalledWith({ where: { id: ids.target, status: "HIDDEN" }, data: { status: "PUBLISHED" } });
     mocks.db.reply.findUnique.mockResolvedValue({ id: ids.target, authorId: ids.member, status: "DELETED", thread: { id: "thread-1", slug: "topic" } });
     await expect(moderateContent({ status: "idle" }, form({ targetType: "REPLY", targetId: ids.target, action: "RESTORE", reason: "Appeal accepted" }))).resolves.toEqual({ status: "error", message: "Member-deleted content cannot be restored by staff." });
   });
@@ -218,7 +251,7 @@ describe("staff moderation boundaries", () => {
     await expect(setMemberSuspension({ status: "idle" }, form({ userId: ids.member, action: "SUSPEND", days: "7", reason: "Spam" }))).resolves.toEqual({ status: "error", message: "Member not found." });
     mocks.db.user.findUnique.mockResolvedValue({ id: ids.member, clerkId: "deleted", role: "MEMBER", status: "DELETED" });
     await expect(setMemberSuspension({ status: "idle" }, form({ userId: ids.member, action: "UNSUSPEND", reason: "Appeal accepted" }))).resolves.toEqual({ status: "error", message: "Deleted accounts cannot be moderated." });
-    expect(mocks.db.user.update).not.toHaveBeenCalled();
+    expect(mocks.db.user.updateMany).not.toHaveBeenCalled();
     mocks.db.user.findUnique.mockResolvedValue({ id: ids.member, clerkId: "member", role: "MEMBER" });
     mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
     mocks.canModerateRole.mockReturnValue(true);
@@ -262,8 +295,9 @@ describe("administrator operations", () => {
   });
 
   it("restores and reorders spaces with neighboring positions", async () => {
-    mocks.db.category.findUnique.mockResolvedValue({ id: ids.space, position: 2 });
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.space, position: 2, archivedAt: new Date() });
     await expect(changeSpaceState({ status: "idle" }, form({ spaceId: ids.space, action: "RESTORE" }))).resolves.toEqual({ status: "success", message: "Space restored." });
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.space, position: 2, archivedAt: null });
     mocks.db.category.findFirst.mockResolvedValue({ id: "neighbor", position: 1 });
     await expect(changeSpaceState({ status: "idle" }, form({ spaceId: ids.space, action: "UP" }))).resolves.toEqual({ status: "success", message: "Space order updated." });
     expect(mocks.db.category.update).toHaveBeenCalledWith({ where: { id: ids.space }, data: { position: 1 } });
@@ -271,6 +305,7 @@ describe("administrator operations", () => {
 
   it("renames and merges tags while preserving the source URL", async () => {
     mocks.db.tag.findFirst.mockResolvedValue(null);
+    mocks.db.tag.findUnique.mockResolvedValueOnce({ id: "tag-1" });
     mocks.db.tag.update.mockResolvedValue({ id: "tag-1", name: "Testing", slug: "tests" });
     await expect(renameTag({ status: "idle" }, form({ tagId: ids.target, name: "Testing" }))).resolves.toEqual({ status: "success", message: "Tag renamed; its URL remains unchanged." });
 

@@ -9,7 +9,6 @@ import { ThreadCard } from "./thread-card";
 vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Post body" /> }));
 vi.mock("@/components/ui/editor-dialog", () => ({ EditorDialog: ({ title, children }: { title: string; children: React.ReactNode }) => <section aria-label={title}>{children}</section> }));
 vi.mock("@/components/ui/submit-button", () => ({ SubmitButton: ({ children, pendingLabel, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { pendingLabel?: string }) => <button data-pending-label={pendingLabel} {...props}>{children}</button> }));
-vi.mock("@/components/forum/create-space-dialog", () => ({ CreateSpaceDialog: () => <button>Add space</button> }));
 vi.mock("@/lib/moderation", () => ({ getModerationSettings: async () => ({ reportReasons: ["Spam", "Other"] }) }));
 
 const category = {
@@ -39,12 +38,10 @@ describe("forum display components", () => {
   });
 
   it("renders an empty state and exposes creation only to administrators", () => {
-    const { rerender } = render(<CategoryList categories={[]} />);
+    render(<CategoryList categories={[]} />);
     expect(screen.getByText("No spaces have been created yet.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add space" })).not.toBeInTheDocument();
 
-    rerender(<CategoryList categories={[]} canCreateSpace />);
-    expect(screen.getByRole("button", { name: "Add space" })).toBeInTheDocument();
   });
 
   it("renders complete thread navigation and activity", () => {

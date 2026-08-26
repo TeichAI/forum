@@ -13,6 +13,11 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 
+FROM base AS migration-tools
+
+RUN npm install --global prisma@6.12.0
+
+
 FROM base AS builder
 
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -29,7 +34,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 
 RUN npm run db:generate
-RUN npm run build
+RUN --mount=type=secret,id=app_env,target=/app/.env.local npm run build
 
 
 FROM base AS runner
@@ -42,10 +47,14 @@ ENV NODE_ENV=production \
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 --ingroup nodejs nextjs
 
-COPY --from=builder --chown=nextjs:nodejs /app ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=migration-tools /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/prisma/build/index.js /usr/local/bin/prisma
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npm run db:deploy && exec npm run start"]
+CMD ["sh", "-c", "prisma migrate deploy && exec node server.js"]

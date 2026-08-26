@@ -115,4 +115,24 @@ describe("Mail actions against PostgreSQL", () => {
     state.user = one;
     await expect(sendMail(form({ recipientId: two.id, subject: "Blocked new mail", body: "No delivery" }))).resolves.toEqual(expect.objectContaining({ status: "error", message: expect.stringContaining("unavailable") }));
   });
+
+  it("rolls back fan-out and preserves the draft when attachment claiming fails", async () => {
+    const [sender, first, second] = await Promise.all([createTestUser({ role: "MODERATOR" }), createTestUser(), createTestUser()]);
+    state.user = sender;
+    state.uploads = true;
+    const attachment = await db.attachment.create({ data: { key: "mail-rollback", url: "https://utfs.io/f/mail-rollback", name: "mail.png", size: 42, userId: sender.id } });
+    const saved = await saveMailDraft(form({ recipientId: [first.id, second.id], subject: "Atomic Mail", body: `Inline ![pond](${attachment.url})` }));
+    if (saved.status !== "saved") throw new Error("Expected a saved draft");
+    await db.$executeRawUnsafe(`CREATE FUNCTION reject_mail_attachment_claim() RETURNS trigger AS $$ BEGIN IF NEW.context = 'MAIL_ENTRY' THEN RAISE EXCEPTION 'test mail attachment failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER reject_mail_attachment_claim BEFORE UPDATE ON "Attachment" FOR EACH ROW EXECUTE FUNCTION reject_mail_attachment_claim()`);
+    try {
+      await expect(sendMail(form({ draftId: saved.draftId, recipientId: [first.id, second.id], subject: "Atomic Mail", body: `Inline ![pond](${attachment.url})` }))).rejects.toThrow();
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS reject_mail_attachment_claim ON "Attachment"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS reject_mail_attachment_claim()`);
+    }
+    expect(await db.mailThread.count()).toBe(0);
+    expect(await db.mailDraft.count({ where: { id: saved.draftId } })).toBe(1);
+    expect(await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } })).toEqual(expect.objectContaining({ context: "MAIL_DRAFT", targetId: saved.draftId }));
+  });
 });

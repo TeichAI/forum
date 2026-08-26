@@ -55,7 +55,7 @@ describe("Mail server actions", () => {
   it("creates and updates drafts, claims images, and reports invalid or failed drafts", async () => {
     mocks.db.mailDraft.create.mockResolvedValue({ id: ids.draft, updatedAt: new Date("2026-01-01") });
     await expect(saveMailDraft(form({ recipientId: ids.other, subject: "Draft", body: "Body" }))).resolves.toEqual(expect.objectContaining({ status: "saved", draftId: ids.draft }));
-    expect(mocks.claimAttachments).toHaveBeenCalledWith("Body", ids.user, "MAIL_DRAFT", ids.draft, ids.draft);
+    expect(mocks.claimAttachments).toHaveBeenCalledWith("Body", ids.user, "MAIL_DRAFT", ids.draft, ids.draft, mocks.db);
 
     mocks.db.mailDraft.findFirst.mockResolvedValue({ id: ids.draft });
     mocks.db.mailDraft.update.mockResolvedValue({ id: ids.draft, updatedAt: new Date("2026-01-02") });

@@ -6,16 +6,17 @@ const mocks = vi.hoisted(() => ({
   viewer: vi.fn(), requireUser: vi.fn(), listThreads: vi.fn(), searchThreads: vi.fn(), notFound: vi.fn(), mode: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
-  category: { findUnique: mocks.category },
+  category: { findUnique: mocks.category, findFirst: mocks.category },
   tag: { findUnique: mocks.tag }, tagAlias: { findUnique: mocks.tagAlias }, bookmark: { findMany: mocks.bookmarks },
 } }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/components/account/account-security", () => ({ AccountSecurity: () => <section>Custom identity settings</section> }));
-vi.mock("@/lib/queries", () => ({
+vi.mock("@/lib/queries", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/queries")>(),
   canModerate: (viewer: { role?: string } | null) => viewer?.role === "MODERATOR" || viewer?.role === "ADMIN",
-  listThreads: mocks.listThreads,
-  searchThreads: mocks.searchThreads,
+  listThreadsPage: mocks.listThreads,
+  searchThreadsPage: mocks.searchThreads,
   threadListInclude: {},
 }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
@@ -38,8 +39,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(user);
   mocks.viewer.mockResolvedValue(null);
-  mocks.listThreads.mockResolvedValue([]);
-  mocks.searchThreads.mockResolvedValue([]);
+  mocks.listThreads.mockResolvedValue({ items: [], nextCursor: null });
+  mocks.searchThreads.mockResolvedValue({ items: [], nextCursor: null });
   mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
   mocks.tagAlias.mockResolvedValue(null);
   mocks.mode.mockReturnValue(true);
@@ -49,19 +50,19 @@ describe("category, tag, and search pages", () => {
   it("generates category metadata and renders populated and empty states", async () => {
     mocks.category.mockResolvedValue(category);
     await expect(categoryMetadata({ params: Promise.resolve({ slug: "general" }) })).resolves.toEqual({ title: "General", description: "Community talk" });
-    mocks.listThreads.mockResolvedValue([thread]);
+    mocks.listThreads.mockResolvedValue({ items: [thread], nextCursor: null });
     const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New thread" })).toHaveAttribute("data-category-id", "category");
     expect(screen.getByText("A discussion")).toBeInTheDocument();
-    mocks.listThreads.mockResolvedValue([]);
+    mocks.listThreads.mockResolvedValue({ items: [], nextCursor: null });
     rerender(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
     expect(screen.getByText("No discussions here yet.")).toBeInTheDocument();
   });
 
   it("uses fallback category metadata and notFound for unknown categories", async () => {
     mocks.category.mockResolvedValue(null);
-    await expect(categoryMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Space", description: undefined });
+    await expect(categoryMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Content unavailable", description: "This content is unavailable.", robots: { index: false, follow: false } });
     await expect(CategoryPage({ params: Promise.resolve({ slug: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
@@ -93,10 +94,10 @@ describe("category, tag, and search pages", () => {
 
   it("renders a tag result and rejects missing tags", async () => {
     mocks.tag.mockResolvedValue({ id: "tag", name: "Testing", slug: "testing" });
-    mocks.listThreads.mockResolvedValue([thread]);
+    mocks.listThreads.mockResolvedValue({ items: [thread], nextCursor: null });
     render(await TagPage({ params: Promise.resolve({ slug: "testing" }) }));
     expect(screen.getByRole("heading", { name: "#Testing" })).toBeInTheDocument();
-    expect(mocks.listThreads).toHaveBeenCalledWith({ tagId: "tag" });
+    expect(mocks.listThreads).toHaveBeenCalledWith({ tagId: "tag", cursor: undefined });
     mocks.tag.mockResolvedValue(null);
     await expect(TagPage({ params: Promise.resolve({ slug: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
   });
@@ -104,10 +105,10 @@ describe("category, tag, and search pages", () => {
   it("renders blank, singular, plural, and empty search results", async () => {
     const { rerender } = render(await SearchPage({ searchParams: Promise.resolve({}) }));
     expect(screen.queryByText(/result/)).not.toBeInTheDocument();
-    mocks.searchThreads.mockResolvedValue([thread]);
+    mocks.searchThreads.mockResolvedValue({ items: [thread], nextCursor: null });
     rerender(await SearchPage({ searchParams: Promise.resolve({ q: "pond" }) }));
     expect(screen.getByText(/1 result for/)).toBeInTheDocument();
-    mocks.searchThreads.mockResolvedValue([]);
+    mocks.searchThreads.mockResolvedValue({ items: [], nextCursor: null });
     rerender(await SearchPage({ searchParams: Promise.resolve({ q: "none" }) }));
     expect(screen.getByText(/0 results for/)).toBeInTheDocument();
     expect(screen.getByText("Nothing surfaced")).toBeInTheDocument();

@@ -5,19 +5,20 @@ import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { ThreadCard } from "@/components/forum/thread-card";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { listThreads } from "@/lib/queries";
+import { listThreadsPage } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
-  const { sort: rawSort } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string; cursor?: string }> }) {
+  const { sort: rawSort, cursor } = await searchParams;
   const sort = rawSort === "new" || rawSort === "top" ? rawSort : "recent";
   const viewer = await getViewer();
-  const [threads, categories, memberCount] = await Promise.all([
-    listThreads({ sort }),
-    db.category.findMany({ where: { archivedAt: null }, orderBy: { position: "asc" }, include: { _count: { select: { threads: { where: { status: "PUBLISHED" } } } } } }),
+  const [threadPage, categories, memberCount] = await Promise.all([
+    listThreadsPage({ sort, cursor }),
+    db.category.findMany({ where: { archivedAt: null }, orderBy: { position: "asc" }, include: { _count: { select: { threads: { where: { status: "PUBLISHED", author: { status: "ACTIVE" } } } } } } }),
     viewer ? Promise.resolve(null) : db.user.count({ where: { status: "ACTIVE" } }),
   ]);
+  const threads = threadPage.items;
   return (
     <div className="shell py-6 sm:py-10">
       {viewer ? (
@@ -75,6 +76,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
           <div className="space-y-3">
             {threads.length ? threads.map((thread) => <ThreadCard key={thread.id} thread={thread} />) : <div className="card p-10 text-center"><h3 className="text-lg font-bold">The pond is quiet.</h3><p className="mt-1 muted">Be the first to start a discussion.</p></div>}
           </div>
+          {threadPage.nextCursor && <div className="mt-4 text-center"><Link className="button button-secondary" href={`/?sort=${sort}&cursor=${encodeURIComponent(threadPage.nextCursor)}`}>More discussions</Link></div>}
         </section>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { optionalRuntimeSecret } from "@/lib/env";
+
 export function uploadsEnabled() {
-  return Boolean(process.env.UPLOADTHING_TOKEN?.trim());
+  return Boolean(optionalRuntimeSecret("UPLOADTHING_TOKEN"));
 }

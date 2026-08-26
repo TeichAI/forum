@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { optionalRuntimeSecret, rateLimitingConfigured } from "@/lib/env";
 
 export type RateLimitPolicy = {
   scope: string;
@@ -58,7 +59,7 @@ type BucketRow = {
 class RateLimitConfigurationError extends Error {}
 
 function secret() {
-  const configured = process.env.RATE_LIMIT_HASH_SECRET?.trim();
+  const configured = optionalRuntimeSecret("RATE_LIMIT_HASH_SECRET");
   if (configured && configured.length >= 32) return configured;
   if (process.env.NODE_ENV === "production") {
     throw new RateLimitConfigurationError("RATE_LIMIT_HASH_SECRET must contain at least 32 characters in production");
@@ -67,7 +68,7 @@ function secret() {
 }
 
 export function rateLimitingEnabled() {
-  return process.env.RATE_LIMITING_ENABLED !== "false";
+  return rateLimitingConfigured();
 }
 
 export function rateLimitSubject(subject: RateLimitSubject) {

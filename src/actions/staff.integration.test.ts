@@ -5,15 +5,18 @@ const authState = vi.hoisted(() => ({ staff: null as User | null, admin: null as
 vi.mock("@/lib/auth", () => ({
   requireModerator: vi.fn(async () => authState.staff),
   requireAdmin: vi.fn(async () => authState.admin ?? authState.staff),
+  requireUser: vi.fn(async () => authState.staff),
   getVerifiedUserRole: vi.fn(async (user: User) => user.role),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
 
 import {
   addStaffNote, changeSpaceState, claimCase, closeCase, mergeTag, moderateContent, renameTag,
   saveModerationSettings, saveSpace, setCasePriority, setMemberSuspension, type StaffActionState,
 } from "./staff";
 import { db } from "@/lib/db";
+import { createThread } from "./forum";
 import { createTestCategory, createTestThread, createTestUser } from "@/test/integration-factories";
 
 const initial: StaffActionState = { status: "idle" };
@@ -78,6 +81,26 @@ describe("staff workflows against PostgreSQL", () => {
     const stored = await db.moderationCase.findUniqueOrThrow({ where: { id: reportCase.id } });
     expect([first.id, second.id]).toContain(stored.assignedToId);
     expect(await db.moderationAction.count({ where: { caseId: reportCase.id, type: "CLAIM_REPORT" } })).toBe(1);
+  });
+
+  it("records only one close transition when the same case is resolved concurrently", async () => {
+    const [moderator, reporter, author] = await Promise.all([createTestUser({ role: "MODERATOR" }), createTestUser(), createTestUser()]);
+    const category = await createTestCategory();
+    const thread = await createTestThread(author.id, category.id);
+    const reportCase = await db.moderationCase.create({ data: {
+      targetType: "THREAD", targetId: thread.id,
+      reports: { create: { reporterId: reporter.id, targetType: "THREAD", targetId: thread.id, reason: "Spam" } },
+    } });
+    authState.staff = moderator;
+
+    const results = await Promise.all([
+      closeCase(initial, form({ caseId: reportCase.id, decision: "RESOLVED", reason: "First decision" })),
+      closeCase(initial, form({ caseId: reportCase.id, decision: "RESOLVED", reason: "Second decision" })),
+    ]);
+
+    expect(results.filter((result) => result.status === "success")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "error")).toHaveLength(1);
+    expect(await db.moderationAction.count({ where: { caseId: reportCase.id, type: "RESOLVE_REPORT" } })).toBe(1);
   });
 
   it("moderates real content and member access with linked notices", async () => {
@@ -194,5 +217,11 @@ describe("staff workflows against PostgreSQL", () => {
     expect(await db.threadTag.findUnique({ where: { threadId_tagId: { threadId: thread.id, tagId: destination.id } } })).not.toBeNull();
     expect(await db.tagAlias.findUnique({ where: { slug: "type-script" } })).toEqual(expect.objectContaining({ tagId: destination.id }));
     expect(await db.moderationAction.findMany({ where: { moderatorId: admin.id, type: { in: ["RENAME_TAG", "MERGE_TAG"] } }, select: { type: true } })).toHaveLength(2);
+
+    authState.staff = member;
+    await expect(createThread(form({ title: "Alias remains canonical", body: "Old tag URL", categoryId: category.id, tags: "type-script" }))).rejects.toThrow("redirect:/t/");
+    const aliasedThread = await db.thread.findFirstOrThrow({ where: { title: "Alias remains canonical" }, include: { tags: true } });
+    expect(aliasedThread.tags).toEqual([expect.objectContaining({ tagId: destination.id })]);
+    expect(await db.tag.findUnique({ where: { slug: "type-script" } })).toBeNull();
   });
 });

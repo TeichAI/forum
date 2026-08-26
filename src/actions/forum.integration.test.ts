@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@prisma/client";
 
-const authState = vi.hoisted(() => ({ user: null as User | null, moderator: null as User | null }));
+const authState = vi.hoisted(() => ({ user: null as User | null, moderator: null as User | null, uploads: false }));
 vi.mock("@/lib/auth", () => ({
   getVerifiedUserRole: vi.fn(async (user: User) => user.role),
   requireUser: vi.fn(async () => authState.user),
@@ -9,12 +9,11 @@ vi.mock("@/lib/auth", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
-vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: vi.fn(() => false) }));
+vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: vi.fn(() => authState.uploads) }));
 
 import {
-  createReply, createThread, deleteReply, moderateReport, reportContent,
-  setContentVisibility, suspendMember, toggleBookmark, toggleFollow,
-  toggleReplyReaction, toggleThreadLock, toggleThreadReaction,
+  createReply, createThread, deleteReply, toggleBookmark, toggleFollow,
+  reportContent, toggleReplyReaction, toggleThreadReaction,
 } from "./forum";
 import { db } from "@/lib/db";
 import { createTestCategory, createTestThread, createTestUser } from "@/test/integration-factories";
@@ -25,7 +24,7 @@ function form(values: Record<string, string>) {
   return data;
 }
 
-beforeEach(() => { authState.user = null; authState.moderator = null; });
+beforeEach(() => { authState.user = null; authState.moderator = null; authState.uploads = false; });
 
 describe("forum actions against PostgreSQL", () => {
   it("applies current space policies to existing threads and treats moderators like members", async () => {
@@ -139,28 +138,6 @@ describe("forum actions against PostgreSQL", () => {
     expect((await db.reply.findUniqueOrThrow({ where: { id: third.replyId } })).parentReplyId).toBe(second.replyId);
   });
 
-  it("applies moderation transactions and audit records", async () => {
-    const [author, reporter, admin] = await Promise.all([
-      createTestUser(), createTestUser(), createTestUser({ role: "ADMIN" }),
-    ]);
-    const category = await createTestCategory();
-    const thread = await createTestThread(author.id, category.id);
-    authState.user = reporter;
-    await reportContent(form({ targetType: "THREAD", targetId: thread.id, reason: "Abuse" }));
-    const report = await db.report.findFirstOrThrow();
-
-    authState.moderator = admin;
-    await moderateReport(form({ reportId: report.id, decision: "RESOLVED", resolution: "Confirmed report" }));
-    await toggleThreadLock(form({ threadId: thread.id }));
-    await setContentVisibility(form({ targetType: "THREAD", targetId: thread.id, hide: "true", reason: "Confirmed report" }));
-    await suspendMember(form({ userId: author.id, days: "3", reason: "Repeated abuse" }));
-
-    expect(await db.moderationCase.findUnique({ where: { id: report.caseId } })).toEqual(expect.objectContaining({ status: "RESOLVED", assignedToId: admin.id }));
-    expect(await db.thread.findUnique({ where: { id: thread.id } })).toEqual(expect.objectContaining({ status: "HIDDEN", isLocked: true }));
-    expect(await db.user.findUnique({ where: { id: author.id } })).toEqual(expect.objectContaining({ status: "SUSPENDED" }));
-    expect(await db.moderationAction.count({ where: { moderatorId: admin.id } })).toBe(4);
-  });
-
   it("persists unique reactions, switches them exclusively, and cascades thread and reply reactions", async () => {
     const [author, reactor, secondReactor] = await Promise.all([createTestUser(), createTestUser(), createTestUser()]);
     const category = await createTestCategory();
@@ -193,5 +170,56 @@ describe("forum actions against PostgreSQL", () => {
     expect(await db.threadDislike.count()).toBe(0);
     expect(await db.replyUpvote.count()).toBe(0);
     expect(await db.replyDislike.count()).toBe(0);
+  });
+
+  it("groups simultaneous reports for the same target into one active case", async () => {
+    const [author, firstReporter, secondReporter] = await Promise.all([createTestUser(), createTestUser(), createTestUser()]);
+    const category = await createTestCategory();
+    const thread = await createTestThread(author.id, category.id);
+
+    authState.user = firstReporter;
+    const first = reportContent(form({ targetType: "THREAD", targetId: thread.id, reason: "Spam" }));
+    authState.user = secondReporter;
+    const second = reportContent(form({ targetType: "THREAD", targetId: thread.id, reason: "Harassment" }));
+    await Promise.all([first, second]);
+
+    const cases = await db.moderationCase.findMany({ where: { targetType: "THREAD", targetId: thread.id } });
+    expect(cases).toHaveLength(1);
+    expect(await db.report.count({ where: { caseId: cases[0]!.id } })).toBe(2);
+  });
+
+  it("rolls back a new discussion when attachment claiming fails", async () => {
+    const author = await createTestUser();
+    const category = await createTestCategory();
+    const attachment = await db.attachment.create({ data: { key: "rollback-image", url: "https://utfs.io/f/rollback-image", name: "pond.png", size: 42, userId: author.id } });
+    authState.user = author;
+    authState.uploads = true;
+    await db.$executeRawUnsafe(`CREATE FUNCTION reject_attachment_claim() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'test attachment failure'; END; $$ LANGUAGE plpgsql`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER reject_attachment_claim BEFORE UPDATE ON "Attachment" FOR EACH ROW EXECUTE FUNCTION reject_attachment_claim()`);
+    try {
+      await expect(createThread(form({ title: "Atomic attachment claim", body: `Inline ![pond](${attachment.url})`, categoryId: category.id, tags: "rollback-tag" }))).rejects.toThrow();
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS reject_attachment_claim ON "Attachment"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS reject_attachment_claim()`);
+    }
+
+    expect(await db.thread.count({ where: { title: "Atomic attachment claim" } })).toBe(0);
+    expect(await db.tag.count({ where: { slug: "rollback-tag" } })).toBe(0);
+    expect(await db.attachment.findUniqueOrThrow({ where: { id: attachment.id } })).toEqual(expect.objectContaining({ context: "DRAFT", targetId: null }));
+  });
+
+  it("rolls back a new discussion when mention notification creation fails", async () => {
+    const [author, mentioned] = await Promise.all([createTestUser(), createTestUser({ username: "atomic_mention" })]);
+    const category = await createTestCategory();
+    authState.user = author;
+    await db.$executeRawUnsafe(`CREATE FUNCTION reject_mention_notice() RETURNS trigger AS $$ BEGIN IF NEW.type = 'MENTION' THEN RAISE EXCEPTION 'test mention failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER reject_mention_notice BEFORE INSERT ON "Notification" FOR EACH ROW EXECUTE FUNCTION reject_mention_notice()`);
+    try {
+      await expect(createThread(form({ title: "Atomic mention notification", body: `Hello @${mentioned.username}`, categoryId: category.id }))).rejects.toThrow();
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS reject_mention_notice ON "Notification"`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS reject_mention_notice()`);
+    }
+    expect(await db.thread.count({ where: { title: "Atomic mention notification" } })).toBe(0);
   });
 });

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, clerkClientMock, getUserMock, currentUserMock, findUniqueMock, updateMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
+const { authMock, clerkClientMock, getUserMock, currentUserMock, findUniqueMock, updateManyMock, upsertMock, redirectMock, e2eUserMock, e2eModeMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   clerkClientMock: vi.fn(),
   getUserMock: vi.fn(),
   currentUserMock: vi.fn(),
   findUniqueMock: vi.fn(),
-  updateMock: vi.fn(),
+  updateManyMock: vi.fn(),
   upsertMock: vi.fn(),
   redirectMock: vi.fn(),
   e2eUserMock: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: findUniqueMock,
-      update: updateMock,
+      updateMany: updateManyMock,
       upsert: upsertMock,
     },
   },
@@ -39,7 +39,7 @@ describe("syncCurrentUser", () => {
     getUserMock.mockReset();
     currentUserMock.mockReset();
     findUniqueMock.mockReset();
-    updateMock.mockReset();
+    updateManyMock.mockReset();
     upsertMock.mockReset();
     redirectMock.mockReset().mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
     e2eUserMock.mockReset().mockResolvedValue(null);
@@ -76,7 +76,7 @@ describe("syncCurrentUser", () => {
     await expect(syncCurrentUser()).resolves.toEqual({ ...created, role: "MODERATOR" });
     expect(upsertMock).toHaveBeenCalledWith({
       where: { clerkId: "user_test" },
-      update: {},
+      update: { email: "owen@example.com", imageUrl: "https://example.com/avatar.png", role: "ADMIN" },
       create: {
         clerkId: "user_test",
         username: "owen_teich",
@@ -124,20 +124,19 @@ describe("syncCurrentUser", () => {
     authMock.mockResolvedValue({ userId: "new-id" });
     findUniqueMock
       .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ clerkId: "someone-else" })
       .mockResolvedValueOnce(null);
     currentUserMock.mockResolvedValue({ username: "Taken", firstName: "New", lastName: "User", imageUrl: null, primaryEmailAddressId: null, emailAddresses: [] });
     upsertMock.mockResolvedValue({ id: "created" });
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
     await syncCurrentUser();
-    expect(upsertMock.mock.calls[0][0].create.username).toMatch(/^taken_/);
-    vi.restoreAllMocks();
+    expect(upsertMock.mock.calls[0][0].create.username).toBe("taken_newid");
   });
 
   it("recovers when concurrent requests provision the same Clerk user", async () => {
     const raced = { id: "winner", clerkId: "race-id", username: "racer" };
     authMock.mockResolvedValue({ userId: "race-id" });
-    findUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(raced);
+    findUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce(raced);
     currentUserMock.mockResolvedValue({ username: "Racer", firstName: "Race", lastName: "Winner", imageUrl: null, primaryEmailAddressId: null, emailAddresses: [] });
     upsertMock.mockRejectedValue({ code: "P2002" });
     await expect(syncCurrentUser()).resolves.toEqual({ ...raced, role: "MEMBER" });
@@ -161,12 +160,37 @@ describe("viewer authorization", () => {
     clerkClientMock.mockReset().mockResolvedValue({ users: { getUser: getUserMock } });
     getUserMock.mockReset();
     findUniqueMock.mockReset();
-    updateMock.mockReset();
+    updateManyMock.mockReset();
     redirectMock.mockReset().mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   });
 
   it("returns the synchronized viewer", async () => {
     authMock.mockResolvedValue({ userId: null });
+    await expect(getViewer()).resolves.toBeNull();
+  });
+
+  it("treats suspended staff as anonymous for page visibility", async () => {
+    e2eModeMock.mockReturnValue(true);
+    e2eUserMock.mockResolvedValue("local");
+    findUniqueMock.mockResolvedValue({ id: "local", status: "SUSPENDED", suspendedUntil: new Date(Date.now() + 60_000), role: "ADMIN" });
+    await expect(getViewer()).resolves.toBeNull();
+  });
+
+  it("restores an expired suspension while resolving a viewer", async () => {
+    e2eModeMock.mockReturnValue(true);
+    e2eUserMock.mockResolvedValue("local");
+    findUniqueMock.mockResolvedValue({ id: "local", status: "SUSPENDED", suspendedUntil: new Date(Date.now() - 60_000), role: "MODERATOR" });
+    updateManyMock.mockResolvedValue({ count: 1 });
+    await expect(getViewer()).resolves.toEqual(expect.objectContaining({ status: "ACTIVE", role: "MODERATOR", suspendedUntil: null }));
+  });
+
+  it("does not grant access when an expired-suspension restore loses a concurrent state change", async () => {
+    e2eModeMock.mockReturnValue(true);
+    e2eUserMock.mockResolvedValue("local");
+    findUniqueMock
+      .mockResolvedValueOnce({ id: "local", status: "SUSPENDED", suspendedUntil: new Date(Date.now() - 60_000), role: "ADMIN" })
+      .mockResolvedValueOnce({ id: "local", status: "DELETED", suspendedUntil: null, role: "ADMIN" });
+    updateManyMock.mockResolvedValue({ count: 0 });
     await expect(getViewer()).resolves.toBeNull();
   });
 
@@ -219,9 +243,9 @@ describe("viewer authorization", () => {
     e2eModeMock.mockReturnValue(true);
     e2eUserMock.mockResolvedValue("local");
     findUniqueMock.mockResolvedValue({ id: "local", status: "SUSPENDED", suspendedUntil: new Date(Date.now() - 1), role: "MEMBER" });
-    updateMock.mockResolvedValue({ id: "local", status: "ACTIVE", suspendedUntil: null, role: "MEMBER" });
+    updateManyMock.mockResolvedValue({ count: 1 });
     await expect(requireUser()).resolves.toEqual(expect.objectContaining({ status: "ACTIVE" }));
-    expect(updateMock).toHaveBeenCalledWith({ where: { id: "local" }, data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null } });
+    expect(updateManyMock).toHaveBeenCalledWith({ where: { id: "local", status: "SUSPENDED", suspendedUntil: { lte: expect.any(Date) } }, data: { status: "ACTIVE", suspendedUntil: null, suspensionReason: null } });
   });
 
   it.each(["MODERATOR", "ADMIN"])("allows %s staff", async (role) => {

@@ -1,7 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createTestCategory, createTestThread, createTestUser } from "@/test/integration-factories";
 import { listThreads, searchThreads } from "./queries";
+import { listReplyBranches, REPLY_BRANCH_PAGE_SIZE } from "./reply-pagination";
 
 describe("thread queries against PostgreSQL", () => {
   it("filters unpublished and unrelated records and honors pinned/recent ordering", async () => {
@@ -52,5 +54,54 @@ describe("thread queries against PostgreSQL", () => {
     expect(new Set(otters.map((thread) => thread.id))).toEqual(new Set([titleMatch.id, replyMatch.id, tagMatch.id]));
     const byAuthor = await searchThreads("SEARCH_AUTHOR");
     expect(byAuthor).toHaveLength(3);
+
+    await db.user.update({ where: { id: author.id }, data: { status: "SUSPENDED", suspendedUntil: new Date(Date.now() + 60_000) } });
+    await expect(searchThreads("otter")).resolves.toEqual([]);
+  });
+
+  it("uses the visibility and cursor indexes for representative PostgreSQL plans", async () => {
+    const author = await createTestUser();
+    const category = await createTestCategory();
+    await createTestThread(author.id, category.id);
+    await db.$executeRawUnsafe("SET enable_seqscan = off");
+    try {
+      const threadPlan = await db.$queryRaw<Array<{ "QUERY PLAN": string }>>(Prisma.sql`
+        EXPLAIN SELECT "id" FROM "Thread"
+        WHERE "categoryId" = ${category.id} AND "status" = 'PUBLISHED'
+        ORDER BY "bumpedAt" DESC, "id" DESC LIMIT 30
+      `);
+      const notificationPlan = await db.$queryRaw<Array<{ "QUERY PLAN": string }>>(Prisma.sql`
+        EXPLAIN SELECT "id" FROM "Notification"
+        WHERE "recipientId" = ${author.id}
+        ORDER BY "createdAt" DESC, "id" DESC LIMIT 50
+      `);
+      const replyPlan = await db.$queryRaw<Array<{ "QUERY PLAN": string }>>(Prisma.sql`
+        EXPLAIN SELECT "id" FROM "Reply"
+        WHERE "threadId" = ${"missing-thread"} AND "parentReplyId" IS NULL
+        ORDER BY "createdAt", "id" LIMIT 11
+      `);
+      expect(threadPlan.map((row) => row["QUERY PLAN"]).join("\n")).toContain("Thread_categoryId_status_bumpedAt_id_idx");
+      expect(notificationPlan.map((row) => row["QUERY PLAN"]).join("\n")).toContain("Notification_recipientId_createdAt_id_idx");
+      expect(replyPlan.map((row) => row["QUERY PLAN"]).join("\n")).toContain("Reply_threadId_parentReplyId_createdAt_id_idx");
+    } finally {
+      await db.$executeRawUnsafe("RESET enable_seqscan");
+    }
+  });
+
+  it("paginates a pathological reply branch without materializing it all at once", async () => {
+    const author = await createTestUser();
+    const category = await createTestCategory();
+    const thread = await createTestThread(author.id, category.id);
+    const root = await db.reply.create({ data: { threadId: thread.id, authorId: author.id, body: "Root" } });
+    await db.reply.createMany({ data: Array.from({ length: REPLY_BRANCH_PAGE_SIZE + 5 }, (_, index) => ({
+      threadId: thread.id, authorId: author.id, parentReplyId: root.id, body: `Child ${index}`,
+    })) });
+
+    const first = await listReplyBranches({ threadId: thread.id, branchId: root.id });
+    expect(first.items).toHaveLength(REPLY_BRANCH_PAGE_SIZE);
+    expect(first.continuations).toEqual([{ rootId: root.id, page: 1 }]);
+    const second = await listReplyBranches({ threadId: thread.id, branchId: root.id, branchPage: 1 });
+    expect(second.items).toHaveLength(6);
+    expect(second.continuations).toEqual([]);
   });
 });

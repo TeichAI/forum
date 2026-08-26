@@ -3,10 +3,11 @@ import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { db } from "@/lib/db";
 import { normalizeClerkRole } from "@/lib/roles";
-import { slugify } from "@/lib/utils";
+import { provisionClerkUser } from "@/lib/user-provisioning";
+import { optionalRuntimeSecret } from "@/lib/env";
 
 export async function POST(request: Request) {
-  const secret = process.env.CLERK_WEBHOOK_SECRET?.trim();
+  const secret = optionalRuntimeSecret("CLERK_WEBHOOK_SECRET");
   if (!secret) return Response.json({ error: "Webhook endpoint is disabled" }, { status: 404 });
   const headerList = await headers();
   const svixId = headerList.get("svix-id");
@@ -33,16 +34,15 @@ export async function POST(request: Request) {
   if (event.type === "user.created" || event.type === "user.updated") {
     const data = event.data;
     const role = normalizeClerkRole(data.public_metadata?.role);
-    const current = await db.user.findUnique({ where: { clerkId: data.id } });
     const preferred = data.username || [data.first_name, data.last_name].filter(Boolean).join(" ") || `member_${data.id.slice(-8)}`;
-    let username = current?.username ?? slugify(preferred).replace(/-/g, "_").slice(0, 30);
-    const collision = await db.user.findUnique({ where: { username } });
-    if (collision && collision.clerkId !== data.id) username = `member_${data.id.slice(-8)}`;
     const email = data.email_addresses.find((item) => item.id === data.primary_email_address_id)?.email_address;
-    await db.user.upsert({
-      where: { clerkId: data.id },
-      update: { email, imageUrl: data.image_url, role },
-      create: { clerkId: data.id, email, username, displayName: [data.first_name, data.last_name].filter(Boolean).join(" ") || username, imageUrl: data.image_url, role },
+    await provisionClerkUser({
+      clerkId: data.id,
+      preferredUsername: preferred,
+      displayName: [data.first_name, data.last_name].filter(Boolean).join(" "),
+      email,
+      imageUrl: data.image_url,
+      role,
     });
   }
   return Response.json({ ok: true });

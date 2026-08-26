@@ -213,6 +213,8 @@ model Thread {
 
   @@index([status, isPinned, bumpedAt(sort: Desc)])
   @@index([categoryId, status, bumpedAt(sort: Desc)])
+  @@index([status, bumpedAt(sort: Desc), id(sort: Desc)])
+  @@index([categoryId, status, bumpedAt(sort: Desc), id(sort: Desc)])
   @@index([authorId, createdAt(sort: Desc)])
 }
 
@@ -248,6 +250,8 @@ model Reply {
 
   @@index([threadId, status, createdAt])
   @@index([parentReplyId, status, createdAt])
+  @@index([threadId, parentReplyId, status, createdAt, id])
+  @@index([threadId, parentReplyId, createdAt, id])
   @@index([authorId, createdAt(sort: Desc)])
 }
 
@@ -358,6 +362,7 @@ model MailParticipant {
 
   @@id([threadId, userId])
   @@index([userId, location, removedAt])
+  @@index([userId, location, removedAt, threadId])
   @@index([userId, starred, removedAt])
 }
 
@@ -404,6 +409,7 @@ model Notification {
   moderationAction   ModerationAction? @relation(fields: [moderationActionId], references: [id], onDelete: SetNull)
 
   @@index([recipientId, readAt, createdAt(sort: Desc)])
+  @@index([recipientId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model Report {
@@ -440,6 +446,7 @@ model ModerationCase {
   actions      ModerationAction[]
 
   @@index([status, priority, createdAt])
+  @@index([status, priority, createdAt, id])
   @@index([assignedToId, status])
   @@index([targetType, targetId, status])
 }
@@ -513,6 +520,7 @@ model Attachment {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([context, targetId])
+  @@index([context, createdAt])
 }
 
 model RateLimitBucket {

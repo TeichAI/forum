@@ -107,7 +107,9 @@ test("thread and reply moderation transitions affect public visibility and notif
   await page.goto("/staff/content?q=seeded+reply&type=REPLY");
   await applyContentAction(page, "reply", "HIDE", "Hide reported reply");
   await memberPage.reload();
-  await expect(memberPage.locator(`#reply-${staffIds.reply}`)).toHaveCount(0);
+  const hiddenReply = memberPage.locator(`#reply-${staffIds.reply}`);
+  await expect(hiddenReply.getByText("Reply unavailable")).toBeVisible();
+  await expect(hiddenReply.getByText("A seeded reply for staff review.")).toHaveCount(0);
   await applyContentAction(page, "reply", "RESTORE", "Restore reported reply");
   await memberPage.reload();
   await expect(memberPage.locator(`#reply-${staffIds.reply} p`).filter({ hasText: "A seeded reply for staff review." })).toBeVisible();

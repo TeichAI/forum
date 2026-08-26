@@ -20,46 +20,47 @@ import { canModerate } from "@/lib/queries";
 import { buildReplyTree, flattenReplyTree, replyIndentLevels } from "@/lib/reply-tree";
 import { canComment } from "@/lib/space-posting-permissions";
 import { uploadsEnabled } from "@/lib/upload-capability";
+import { publicThreadWhere, unavailableMetadata } from "@/lib/access";
+import { listReplyBranches, REPLY_BRANCH_PAGE_SIZE } from "@/lib/reply-pagination";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const thread = await db.thread.findUnique({
-    where: { slug },
+  const thread = await db.thread.findFirst({
+    where: { slug, ...publicThreadWhere },
     select: { title: true, body: true },
   });
-  return { title: thread?.title ?? "Discussion", description: thread?.body.slice(0, 150) };
+  return thread ? { title: thread.title, description: thread.body.slice(0, 150) } : unavailableMetadata;
 }
 
-export default async function ThreadPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ThreadPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ replyCursor?: string; branch?: string; branchPage?: string }> }) {
   const { slug } = await params;
+  const replyParams = await searchParams;
   const viewer = await getViewer();
   const thread = await db.thread.findUnique({
     where: { slug },
     include: {
-      author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
+      author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true, status: true } },
       category: true,
       tags: { include: { tag: true } },
       upvotes: viewer ? { where: { userId: viewer.id } } : false,
       dislikes: viewer ? { where: { userId: viewer.id } } : false,
       bookmarks: viewer ? { where: { userId: viewer.id } } : false,
-      _count: { select: { upvotes: true, dislikes: true, replies: { where: { status: "PUBLISHED" } } } },
-      replies: {
-        orderBy: { createdAt: "asc" },
-        include: {
-          author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
-          upvotes: viewer ? { where: { userId: viewer.id } } : false,
-          dislikes: viewer ? { where: { userId: viewer.id } } : false,
-          _count: { select: { upvotes: true, dislikes: true } },
-        },
-      },
+      _count: { select: { upvotes: true, dislikes: true, replies: { where: { status: "PUBLISHED", author: { status: "ACTIVE" } } } } },
     },
   });
-  if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt) && !canModerate(viewer))) notFound();
+  if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt || thread.author.status !== "ACTIVE") && !canModerate(viewer))) notFound();
 
   const returnTo = `/t/${thread.slug}`;
-  const displayReplies = flattenReplyTree(buildReplyTree(thread.replies));
+  const replyPage = await listReplyBranches({
+    threadId: thread.id,
+    viewerId: viewer?.id,
+    cursor: replyParams.replyCursor,
+    branchId: replyParams.branch,
+    branchPage: Number(replyParams.branchPage) || 0,
+  });
+  const displayReplies = flattenReplyTree(buildReplyTree(replyPage.items));
   const canViewerReply = Boolean(
     viewer
     && thread.status === "PUBLISHED"
@@ -157,7 +158,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
         </footer>
       </article>
 
-      <section className="mt-8">
+      <section className="mt-8" id="replies">
         <h2 className="mb-4 text-xl font-black">
           {thread._count.replies} {thread._count.replies === 1 ? "reply" : "replies"}
         </h2>
@@ -175,7 +176,7 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
                   style={{ "--reply-depth-desktop": indent.desktop, "--reply-depth-mobile": indent.mobile } as React.CSSProperties}
                 >
                   <article id={`reply-${reply.id}`} className="card scroll-mt-24 p-5 sm:p-6">
-                    {reply.status === "PUBLISHED" ? (
+                    {reply.status === "PUBLISHED" && reply.author.status === "ACTIVE" ? (
                       <div className="flex gap-3">
                         <Link href={`/members/${reply.author.id}`}>
                           <Avatar src={reply.author.imageUrl} name={reply.author.displayName} />
@@ -244,6 +245,9 @@ export default async function ThreadPage({ params }: { params: Promise<{ slug: s
               );
             })}
           </div>
+          {replyPage.continuations.map((continuation) => <div className="card mt-3 p-4 text-center text-sm muted" role="status" key={continuation.rootId}>This reply branch is shown {REPLY_BRANCH_PAGE_SIZE} replies at a time. <Link className="font-bold underline" href={`/t/${thread.slug}?branch=${encodeURIComponent(continuation.rootId)}&branchPage=${continuation.page}`}>Continue this branch</Link>.</div>)}
+          {replyPage.nextCursor ? <div className="mt-4 text-center"><Link className="button button-secondary" href={`/t/${thread.slug}?replyCursor=${encodeURIComponent(replyPage.nextCursor)}`}>More reply branches</Link></div> : null}
+          {replyPage.selectedBranchId ? <div className="mt-4 text-center"><Link className="button button-secondary" href={`/t/${thread.slug}#replies`}>Back to reply branches</Link></div> : null}
         </ReplyComposerProvider>
       </section>
 

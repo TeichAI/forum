@@ -4,10 +4,12 @@ const mocks = vi.hoisted(() => {
   const method = () => vi.fn();
   const db = {
     attachment: { findMany: method(), updateMany: method() },
-    user: { findMany: method(), findUnique: method(), update: method() },
+    user: { findMany: method(), findUnique: method(), findFirst: method(), update: method() },
     category: { findUnique: method() },
-    thread: { create: method(), findUnique: method(), update: method() },
-    reply: { create: method(), findUnique: method(), update: method() },
+    thread: { create: method(), findUnique: method(), findFirst: method(), update: method() },
+    reply: { create: method(), findUnique: method(), findFirst: method(), update: method() },
+    tag: { findMany: method(), create: method() },
+    tagAlias: { findMany: method() },
     threadUpvote: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
     threadDislike: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
     replyUpvote: { findUnique: method(), create: method(), delete: method(), deleteMany: method() },
@@ -50,8 +52,7 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
-  moderateReport, reportContent, setContentVisibility,
-  suspendMember, toggleBookmark, toggleFollow, toggleReplyReaction,
+  reportContent, toggleBookmark, toggleFollow, toggleReplyReaction,
   toggleThreadLock, toggleThreadReaction, updateReply, updateThread,
 } from "./forum";
 
@@ -85,6 +86,12 @@ beforeEach(() => {
   mocks.db.moderationCase.findFirst.mockResolvedValue(null);
   mocks.db.moderationCase.create.mockResolvedValue({ id: "case-1" });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
+  mocks.db.thread.findFirst.mockImplementation((...args) => mocks.db.thread.findUnique(...args));
+  mocks.db.reply.findFirst.mockImplementation((...args) => mocks.db.reply.findUnique(...args));
+  mocks.db.user.findFirst.mockImplementation((...args) => mocks.db.user.findUnique(...args));
+  mocks.db.tagAlias.findMany.mockResolvedValue([]);
+  mocks.db.tag.findMany.mockResolvedValue([]);
+  mocks.db.tag.create.mockImplementation(async ({ data }: { data: { slug: string; name: string } }) => ({ id: `tag-${data.slug}`, ...data }));
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => {
     if (typeof input === "function") return input(mocks.db);
@@ -110,10 +117,7 @@ describe("discussion actions", () => {
       () => blockMember(new FormData()),
       () => reportContent(new FormData()),
       () => markNotificationsRead(),
-      () => moderateReport(new FormData()),
       () => toggleThreadLock(new FormData()),
-      () => setContentVisibility(new FormData()),
-      () => suspendMember(new FormData()),
     ];
 
     for (const action of actions) {
@@ -154,9 +158,7 @@ describe("discussion actions", () => {
     expect(mocks.db.thread.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         title: "A useful thread", authorId: ids.user, categoryId: ids.category,
-        tags: { create: expect.arrayContaining([
-          expect.objectContaining({ tag: expect.objectContaining({ connectOrCreate: expect.objectContaining({ where: { slug: "next-js" } }) }) }),
-        ]) },
+        tags: { create: expect.arrayContaining([{ tagId: "tag-next-js" }]) },
       }),
     }));
     expect(mocks.db.attachment.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["attachment-1"] } }, data: { context: "THREAD", targetId: ids.thread } });
@@ -170,7 +172,7 @@ describe("discussion actions", () => {
   });
 
   it("creates a reply transaction, bumps the thread, notifies its author, and revalidates", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     mocks.db.thread.update.mockResolvedValue({});
     mocks.db.notification.create.mockResolvedValue({});
@@ -181,22 +183,22 @@ describe("discussion actions", () => {
   });
 
   it("rejects replies to missing, hidden, or locked threads", async () => {
-    for (const thread of [null, { status: "HIDDEN" }, { status: "PUBLISHED", isLocked: true }]) {
+    for (const thread of [null, { status: "HIDDEN" }, { status: "PUBLISHED", author: { status: "ACTIVE" }, isLocked: true, category: { archivedAt: null } }]) {
       mocks.db.thread.findUnique.mockResolvedValueOnce(thread);
       await expect(createReply(form({ threadId: ids.thread, body: "A reply" }))).rejects.toThrow(thread?.isLocked ? "locked" : "not found");
     }
   });
 
   it("does not notify an author replying to their own thread", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.user, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.user, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
     await createReply(form({ threadId: ids.thread, body: "Self reply" }));
     expect(mocks.db.notification.create).not.toHaveBeenCalled();
   });
 
   it("creates a nested reply and notifies its direct parent author instead of the thread author", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.admin, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
-    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "PUBLISHED" });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.admin, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.other, author: { status: "ACTIVE" }, threadId: ids.thread, status: "PUBLISHED" });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply, parentReplyId: ids.parentReply });
 
     await createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "A nested reply" }));
@@ -206,8 +208,8 @@ describe("discussion actions", () => {
   });
 
   it("suppresses nested self-notifications", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
-    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.user, threadId: ids.thread, status: "PUBLISHED" });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.reply.findUnique.mockResolvedValue({ id: ids.parentReply, authorId: ids.user, author: { status: "ACTIVE" }, threadId: ids.thread, status: "PUBLISHED" });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
 
     await createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "Replying to myself" }));
@@ -218,9 +220,9 @@ describe("discussion actions", () => {
     ["missing", null],
     ["hidden", { id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "HIDDEN" }],
     ["deleted", { id: ids.parentReply, authorId: ids.other, threadId: ids.thread, status: "DELETED" }],
-    ["cross-thread", { id: ids.parentReply, authorId: ids.other, threadId: ids.admin, status: "PUBLISHED" }],
+    ["cross-thread", { id: ids.parentReply, authorId: ids.other, author: { status: "ACTIVE" }, threadId: ids.admin, status: "PUBLISHED" }],
   ])("rejects a %s nested-reply parent", async (_case, parent) => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: null } });
     mocks.db.reply.findUnique.mockResolvedValue(parent);
 
     await expect(createReply(form({ threadId: ids.thread, parentReplyId: ids.parentReply, body: "Invalid nested reply" }))).rejects.toThrow("Parent reply not found");
@@ -228,7 +230,7 @@ describe("discussion actions", () => {
   });
 
   it("rejects replies in archived spaces", async () => {
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: new Date() } });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "OPEN", archivedAt: new Date() } });
     await expect(createReply(form({ threadId: ids.thread, body: "Archived reply" }))).rejects.toThrow("Thread not found");
   });
 
@@ -250,8 +252,8 @@ describe("discussion actions", () => {
 
   it("allows member comments in announcements and denies them in admin-only spaces", async () => {
     mocks.db.thread.findUnique
-      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ANNOUNCEMENTS" } })
-      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ADMIN_ONLY" } });
+      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ANNOUNCEMENTS" } })
+      .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ADMIN_ONLY" } });
     mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
 
     await createReply(form({ threadId: ids.thread, body: "Allowed reply" }));
@@ -261,7 +263,7 @@ describe("discussion actions", () => {
 
   it("keeps thread locks absolute for administrators", async () => {
     mocks.requireUser.mockResolvedValue({ ...member, role: "ADMIN" });
-    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, isLocked: true, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
+    mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: true, status: "PUBLISHED", category: { postingPolicy: "OPEN" } });
     await expect(createReply(form({ threadId: ids.thread, body: "Admin reply" }))).rejects.toThrow("locked");
     expect(mocks.db.reply.create).not.toHaveBeenCalled();
   });
@@ -361,6 +363,7 @@ describe("discussion actions", () => {
 
 describe("member and content ownership actions", () => {
   it("toggles following and creates a notification", async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, status: "ACTIVE" });
     mocks.db.follow.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({});
     await toggleFollow(form({ userId: ids.other, returnTo: "/members/x" }));
     await toggleFollow(form({ userId: ids.other, returnTo: "/members/x" }));
@@ -407,6 +410,7 @@ describe("member and content ownership actions", () => {
 
 describe("reports, blocking, and notifications", () => {
   it("blocks another member idempotently", async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, status: "ACTIVE" });
     await blockMember(form({ userId: ids.other }));
     expect(mocks.db.block.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { blockerId: ids.user, blockedId: ids.other } }));
   });
@@ -435,18 +439,6 @@ describe("reports, blocking, and notifications", () => {
 });
 
 describe("moderation actions", () => {
-  it.each(["RESOLVED", "DISMISSED"] as const)("records a %s report decision and audit action", async (decision) => {
-    mocks.db.report.findUnique.mockResolvedValue({ id: ids.report, caseId: "case-1", targetType: "THREAD", targetId: ids.thread, case: { assignedToId: null } });
-    await moderateReport(form({ reportId: ids.report, decision, resolution: "Reviewed" }));
-    expect(mocks.db.moderationCase.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "case-1" }, data: expect.objectContaining({ status: decision, assignedToId: ids.admin }) }));
-    expect(mocks.db.moderationAction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: decision === "RESOLVED" ? "RESOLVE_REPORT" : "DISMISS_REPORT" }) });
-  });
-
-  it("rejects a missing report", async () => {
-    mocks.db.report.findUnique.mockResolvedValue(null);
-    await expect(moderateReport(form({ reportId: ids.report, decision: "RESOLVED", resolution: "Reviewed" }))).rejects.toThrow("Report not found");
-  });
-
   it.each([false, true])("toggles thread lock state from %s", async (isLocked) => {
     mocks.db.thread.findUnique.mockResolvedValue({ id: ids.thread, slug: "topic", isLocked, authorId: ids.other });
     await toggleThreadLock(form({ threadId: ids.thread }));
@@ -459,45 +451,4 @@ describe("moderation actions", () => {
     await expect(toggleThreadLock(form({ threadId: ids.thread }))).rejects.toThrow("Thread not found");
   });
 
-  it.each([
-    ["THREAD", "true", "thread", "HIDE"],
-    ["REPLY", "false", "reply", "RESTORE"],
-  ] as const)("changes %s visibility and audits it", async (targetType, hide, modelName, type) => {
-    if (targetType === "THREAD") mocks.db.thread.findUnique.mockResolvedValue({ authorId: ids.other });
-    else mocks.db.reply.findUnique.mockResolvedValue({ authorId: ids.other, threadId: ids.thread });
-    await setContentVisibility(form({ targetType, targetId: ids.thread, hide, reason: "Reviewed" }));
-    expect(mocks.db[modelName].update).toHaveBeenCalledWith({ where: { id: ids.thread }, data: { status: hide === "true" ? "HIDDEN" : "PUBLISHED" } });
-    expect(mocks.db.moderationAction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type }) });
-  });
-
-  it("suspends a non-admin with an audit record and notification", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-24T12:00:00Z"));
-    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, clerkId: "user_other", role: "MEMBER" });
-    await suspendMember(form({ userId: ids.other, days: "2", reason: "Repeated abuse" }));
-    expect(mocks.db.user.update).toHaveBeenCalledWith({ where: { id: ids.other }, data: expect.objectContaining({ status: "SUSPENDED", suspendedUntil: new Date("2026-08-26T12:00:00Z") }) });
-    expect(mocks.db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ type: "MODERATION", recipientId: ids.other, actorId: ids.admin, moderationActionId: "action-1" }) });
-    vi.useRealTimers();
-  });
-
-  it("does not suspend missing users, current administrators, or unverified targets", async () => {
-    mocks.db.user.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ clerkId: "user_admin", role: "MEMBER" })
-      .mockResolvedValueOnce({ clerkId: "user_unverified", role: "MEMBER" });
-    mocks.getVerifiedUserRole.mockResolvedValueOnce("ADMIN").mockResolvedValueOnce(null);
-    for (let i = 0; i < 3; i += 1) {
-      await expect(suspendMember(form({ userId: ids.other, days: "7", reason: "Repeated abuse" }))).rejects.toThrow("cannot be suspended");
-    }
-  });
-
-  it("uses current Clerk metadata instead of a stale cached administrator role", async () => {
-    mocks.db.user.findUnique.mockResolvedValue({ id: ids.other, clerkId: "user_other", role: "ADMIN" });
-    mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
-    await suspendMember(form({ userId: ids.other, days: "7", reason: "Repeated abuse" }));
-    expect(mocks.db.user.update).toHaveBeenCalledWith({
-      where: { id: ids.other },
-      data: expect.objectContaining({ status: "SUSPENDED" }),
-    });
-  });
 });

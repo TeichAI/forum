@@ -100,9 +100,9 @@ describe("Clerk webhook route", () => {
   });
 
   it.each([
-    ["user.created", null, "member_user_new", "admin", "ADMIN"],
-    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", "moderator", "MODERATOR"],
-    ["user.updated", { clerkId: "user_new", username: "kept_name" }, "kept_name", "owner", "MEMBER"],
+    ["user.created", null, "duplicate_usernew", "admin", "ADMIN"],
+    ["user.updated", { clerkId: "user_new", username: "kept_name", displayName: "Kept Name" }, "kept_name", "moderator", "MODERATOR"],
+    ["user.updated", { clerkId: "user_new", username: "kept_name", displayName: "Kept Name" }, "kept_name", "owner", "MEMBER"],
   ])("processes a signed %s profile event", async (type, current, expectedUsername, publicRole, expectedRole) => {
     const secret = "whsec_dGVzdC1zZWNyZXQ=";
     const messageId = `msg_${type}`;
@@ -131,6 +131,6 @@ describe("Clerk webhook route", () => {
     expect(args.create.username).toBe(expectedUsername);
     expect(args.create.role).toBe(expectedRole);
     expect(args.update).toEqual({ email: "new@example.com", imageUrl: "https://example.com/avatar.png", role: expectedRole });
-    expect(args.create.displayName).toBe("New Member");
+    expect(args.create.displayName).toBe(current ? "Kept Name" : "New Member");
   });
 });

@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { canModerateRole } from "@/lib/moderation";
 import { consumeUserMutation, rateLimitedActionState } from "@/lib/rate-limit";
 import { slugify } from "@/lib/utils";
+import { withSerializableRetry } from "@/lib/transactions";
 
 export type StaffActionState = {
   status: "idle" | "success" | "error" | "rate_limited";
@@ -88,14 +89,19 @@ export async function setCasePriority(_state: StaffActionState, formData: FormDa
   if (!parsed.success) return initialError("Choose a valid priority.");
   const reportCase = await db.moderationCase.findUnique({ where: { id: parsed.data.caseId } });
   if (!reportCase) return initialError("Case not found.");
-  await db.$transaction([
-    db.moderationCase.update({ where: { id: reportCase.id }, data: { priority: parsed.data.priority } }),
-    db.moderationAction.create({ data: {
+  if (reportCase.status === "RESOLVED" || reportCase.status === "DISMISSED") return initialError("Closed-case priority cannot be changed.");
+  if (reportCase.priority === parsed.data.priority) return initialError("Choose a different priority.");
+  const changed = await db.$transaction(async (tx) => {
+    const update = await tx.moderationCase.updateMany({ where: { id: reportCase.id, status: { in: ["OPEN", "IN_REVIEW"] }, priority: { not: parsed.data.priority } }, data: { priority: parsed.data.priority } });
+    if (update.count !== 1) return false;
+    await tx.moderationAction.create({ data: {
       type: "SET_PRIORITY", moderatorId: moderator.id, caseId: reportCase.id,
       targetType: reportCase.targetType, targetId: reportCase.targetId,
       reason: `Priority set to ${parsed.data.priority.toLowerCase()}`,
-    } }),
-  ]);
+    } });
+    return true;
+  });
+  if (!changed) return initialError("The case changed before your update. Refresh and try again.");
   refreshStaff(`/staff/reports/${reportCase.id}`);
   return success("Priority updated.");
 }
@@ -117,21 +123,26 @@ export async function closeCase(_state: StaffActionState, formData: FormData): P
   if (!reopen && (reportCase.status === "RESOLVED" || reportCase.status === "DISMISSED")) return initialError("This case is already closed.");
   const status: "OPEN" | "RESOLVED" | "DISMISSED" = reopen ? "OPEN" : parsed.data.decision as "RESOLVED" | "DISMISSED";
   const type = reopen ? "REOPEN_REPORT" : status === "RESOLVED" ? "RESOLVE_REPORT" : "DISMISS_REPORT";
-  await db.$transaction([
-    db.moderationCase.update({
-      where: { id: reportCase.id },
+  const changed = await db.$transaction(async (tx) => {
+    const update = await tx.moderationCase.updateMany({
+      where: reopen
+        ? { id: reportCase.id, status: { in: ["RESOLVED", "DISMISSED"] } }
+        : { id: reportCase.id, status: { in: ["OPEN", "IN_REVIEW"] } },
       data: {
         status,
         resolution: reopen ? null : parsed.data.reason,
         closedAt: reopen ? null : new Date(),
         assignedToId: reopen ? null : (reportCase.assignedToId ?? moderator.id),
       },
-    }),
-    db.moderationAction.create({ data: {
+    });
+    if (update.count !== 1) return false;
+    await tx.moderationAction.create({ data: {
       type, moderatorId: moderator.id, caseId: reportCase.id,
       targetType: reportCase.targetType, targetId: reportCase.targetId, reason: parsed.data.reason,
-    } }),
-  ]);
+    } });
+    return true;
+  });
+  if (!changed) return initialError("The case changed before your update. Refresh and try again.");
   refreshStaff(`/staff/reports/${reportCase.id}`);
   return success(reopen ? "Case reopened." : `Case ${status.toLowerCase()}.`);
 }
@@ -189,21 +200,40 @@ export async function moderateContent(_state: StaffActionState, formData: FormDa
   if (parsed.data.targetType === "REPLY" && !["HIDE", "RESTORE"].includes(parsed.data.action)) return initialError("That action is unavailable for replies.");
 
   const target = parsed.data.targetType === "THREAD"
-    ? await db.thread.findUnique({ where: { id: parsed.data.targetId }, select: { id: true, slug: true, authorId: true, status: true, isLocked: true, isPinned: true } })
-    : await db.reply.findUnique({ where: { id: parsed.data.targetId }, select: { id: true, authorId: true, status: true, thread: { select: { slug: true, id: true } } } });
+    ? await db.thread.findUnique({ where: { id: parsed.data.targetId }, select: { id: true, slug: true, authorId: true, status: true, isLocked: true, isPinned: true, author: true } })
+    : await db.reply.findUnique({ where: { id: parsed.data.targetId }, select: { id: true, authorId: true, status: true, author: true, thread: { select: { slug: true, id: true } } } });
   if (!target) return initialError("Content not found.");
   if (parsed.data.action === "RESTORE" && target.status === "DELETED") return initialError("Member-deleted content cannot be restored by staff.");
+  const authorRole = await getVerifiedUserRole(target.author);
+  if (!authorRole || !canModerateRole(moderator.role, authorRole)) return initialError("This content is protected by the role hierarchy.");
+  const noOp = parsed.data.action === "HIDE" ? target.status === "HIDDEN"
+    : parsed.data.action === "RESTORE" ? target.status === "PUBLISHED"
+      : parsed.data.action === "LOCK" ? "isLocked" in target && target.isLocked
+        : parsed.data.action === "UNLOCK" ? "isLocked" in target && !target.isLocked
+          : parsed.data.action === "PIN" ? "isPinned" in target && target.isPinned
+            : "isPinned" in target && !target.isPinned;
+  if (noOp) return initialError("That moderation action would not change the content.");
 
-  await db.$transaction(async (tx) => {
+  const changed = await db.$transaction(async (tx) => {
     if (parsed.data.targetType === "THREAD") {
       const data = parsed.data.action === "HIDE" ? { status: "HIDDEN" as const }
         : parsed.data.action === "RESTORE" ? { status: "PUBLISHED" as const }
           : parsed.data.action === "LOCK" ? { isLocked: true }
             : parsed.data.action === "UNLOCK" ? { isLocked: false }
               : parsed.data.action === "PIN" ? { isPinned: true } : { isPinned: false };
-      await tx.thread.update({ where: { id: target.id }, data });
+      const expected = parsed.data.action === "HIDE" ? { status: "PUBLISHED" as const }
+        : parsed.data.action === "RESTORE" ? { status: "HIDDEN" as const }
+          : parsed.data.action === "LOCK" ? { isLocked: false }
+            : parsed.data.action === "UNLOCK" ? { isLocked: true }
+              : parsed.data.action === "PIN" ? { isPinned: false } : { isPinned: true };
+      const update = await tx.thread.updateMany({ where: { id: target.id, ...expected }, data });
+      if (update.count !== 1) return false;
     } else {
-      await tx.reply.update({ where: { id: target.id }, data: { status: parsed.data.action === "HIDE" ? "HIDDEN" : "PUBLISHED" } });
+      const update = await tx.reply.updateMany({
+        where: { id: target.id, status: parsed.data.action === "HIDE" ? "PUBLISHED" : "HIDDEN" },
+        data: { status: parsed.data.action === "HIDE" ? "HIDDEN" : "PUBLISHED" },
+      });
+      if (update.count !== 1) return false;
     }
     const action = await tx.moderationAction.create({ data: {
       type: parsed.data.action, moderatorId: moderator.id, userId: target.authorId,
@@ -215,7 +245,9 @@ export async function moderateContent(_state: StaffActionState, formData: FormDa
       type: "MODERATION", recipientId: target.authorId, actorId: moderator.id,
       threadId, replyId, moderationActionId: action.id,
     } });
+    return true;
   });
+  if (!changed) return initialError("The content changed before your update. Refresh and try again.");
   const slug = parsed.data.targetType === "THREAD" ? ("slug" in target ? target.slug : "") : ("thread" in target ? target.thread.slug : "");
   refreshStaff("/staff/content", `/t/${slug}`);
   return success(`${parsed.data.action.toLowerCase()} action completed.`);
@@ -239,12 +271,15 @@ export async function setMemberSuspension(_state: StaffActionState, formData: Fo
   const verifiedRole = await getVerifiedUserRole(target);
   if (!verifiedRole || !canModerateRole(moderator.role, verifiedRole)) return initialError("This staff account is protected.");
   if (parsed.data.action === "SUSPEND" && !parsed.data.days) return initialError("Choose a suspension duration.");
+  if (parsed.data.action === "SUSPEND" && target.status === "SUSPENDED") return initialError("This member is already suspended.");
+  if (parsed.data.action === "UNSUSPEND" && target.status === "ACTIVE") return initialError("This member is already active.");
   const until = parsed.data.action === "SUSPEND" ? new Date(Date.now() + parsed.data.days! * 86_400_000) : null;
-  await db.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: target.id }, data: {
+  const changed = await db.$transaction(async (tx) => {
+    const update = await tx.user.updateMany({ where: { id: target.id, status: parsed.data.action === "SUSPEND" ? "ACTIVE" : "SUSPENDED" }, data: {
       status: parsed.data.action === "SUSPEND" ? "SUSPENDED" : "ACTIVE",
       suspendedUntil: until, suspensionReason: parsed.data.action === "SUSPEND" ? parsed.data.reason : null,
     } });
+    if (update.count !== 1) return false;
     const action = await tx.moderationAction.create({ data: {
       type: parsed.data.action, moderatorId: moderator.id, userId: target.id,
       targetType: "USER", targetId: target.id, reason: parsed.data.reason,
@@ -253,7 +288,9 @@ export async function setMemberSuspension(_state: StaffActionState, formData: Fo
     await tx.notification.create({ data: {
       type: "MODERATION", recipientId: target.id, actorId: moderator.id, moderationActionId: action.id,
     } });
+    return true;
   });
+  if (!changed) return initialError("The member changed before your update. Refresh and try again.");
   refreshStaff("/staff/members", `/staff/members/${target.id}`);
   return success(parsed.data.action === "SUSPEND" ? "Member suspended." : "Member restored.");
 }
@@ -281,15 +318,18 @@ export async function saveSpace(_state: StaffActionState, formData: FormData): P
   const slugTaken = existing ? null : await db.category.findUnique({ where: { slug: baseSlug }, select: { id: true } });
   const slug = existing?.slug ?? (slugTaken ? `${baseSlug}-${crypto.randomUUID().slice(0, 6)}` : baseSlug);
   const position = existing?.position ?? ((await db.category.aggregate({ _max: { position: true } }))._max.position ?? -1) + 1;
-  const space = await db.category.upsert({
-    where: { id: id.data ?? "new-space" },
-    update: { ...values.data, color: values.data.color.toLowerCase() },
-    create: { ...values.data, color: values.data.color.toLowerCase(), slug, position },
+  await db.$transaction(async (tx) => {
+    const saved = await tx.category.upsert({
+      where: { id: id.data ?? "new-space" },
+      update: { ...values.data, color: values.data.color.toLowerCase() },
+      create: { ...values.data, color: values.data.color.toLowerCase(), slug, position },
+    });
+    await tx.moderationAction.create({ data: {
+      type: existing ? "UPDATE_SPACE" : "CREATE_SPACE", moderatorId: admin.id,
+      targetType: "SPACE", targetId: saved.id, reason: existing ? "Space settings updated" : "Space created",
+    } });
+    return saved;
   });
-  await db.moderationAction.create({ data: {
-    type: existing ? "UPDATE_SPACE" : "CREATE_SPACE", moderatorId: admin.id,
-    targetType: "SPACE", targetId: space.id, reason: existing ? "Space settings updated" : "Space created",
-  } });
   refreshStaff("/staff/spaces", "/");
   return success(existing ? "Space updated." : "Space created.");
 }
@@ -306,6 +346,7 @@ export async function changeSpaceState(_state: StaffActionState, formData: FormD
   if (!space) return initialError("Space not found.");
   if (parsed.data.action === "ARCHIVE" || parsed.data.action === "RESTORE") {
     const archive = parsed.data.action === "ARCHIVE";
+    if (archive === Boolean(space.archivedAt)) return initialError(archive ? "This space is already archived." : "This space is already active.");
     await db.$transaction([
       db.category.update({ where: { id: space.id }, data: { archivedAt: archive ? new Date() : null } }),
       db.moderationAction.create({ data: {
@@ -339,11 +380,16 @@ export async function renameTag(_state: StaffActionState, formData: FormData): P
   if (limited) return limited;
   const parsed = z.object({ tagId: idSchema, name: z.string().trim().min(1).max(50) }).safeParse({ tagId: formData.get("tagId"), name: formData.get("name") });
   if (!parsed.success) return initialError("Enter a valid tag name.");
-  const duplicate = await db.tag.findFirst({ where: { name: { equals: parsed.data.name, mode: "insensitive" }, id: { not: parsed.data.tagId } } });
-  if (duplicate) return initialError("A tag with that name already exists. Merge the tags instead.");
-  const tag = await db.tag.update({ where: { id: parsed.data.tagId }, data: { name: parsed.data.name } }).catch(() => null);
-  if (!tag) return initialError("Tag not found.");
-  await db.moderationAction.create({ data: { type: "RENAME_TAG", moderatorId: admin.id, targetType: "TAG", targetId: tag.id, reason: `Tag renamed to ${tag.name}` } });
+  const result = await db.$transaction(async (tx) => {
+    const duplicate = await tx.tag.findFirst({ where: { name: { equals: parsed.data.name, mode: "insensitive" }, id: { not: parsed.data.tagId } } });
+    if (duplicate) return { error: "A tag with that name already exists. Merge the tags instead." } as const;
+    const existing = await tx.tag.findUnique({ where: { id: parsed.data.tagId }, select: { id: true } });
+    if (!existing) return { error: "Tag not found." } as const;
+    const tag = await tx.tag.update({ where: { id: existing.id }, data: { name: parsed.data.name } });
+    await tx.moderationAction.create({ data: { type: "RENAME_TAG", moderatorId: admin.id, targetType: "TAG", targetId: tag.id, reason: `Tag renamed to ${tag.name}` } });
+    return { tag } as const;
+  });
+  if ("error" in result && result.error) return initialError(result.error);
   refreshStaff("/staff/tags");
   return success("Tag renamed; its URL remains unchanged.");
 }
@@ -356,12 +402,12 @@ export async function mergeTag(_state: StaffActionState, formData: FormData): Pr
     sourceId: formData.get("sourceId"), destinationId: formData.get("destinationId"),
   });
   if (!parsed.success) return initialError("Choose two different tags.");
-  const [source, destination] = await Promise.all([
-    db.tag.findUnique({ where: { id: parsed.data.sourceId }, include: { threads: true } }),
-    db.tag.findUnique({ where: { id: parsed.data.destinationId } }),
-  ]);
-  if (!source || !destination) return initialError("One of those tags no longer exists.");
-  await db.$transaction(async (tx) => {
+  const result = await withSerializableRetry(async (tx) => {
+    const [source, destination] = await Promise.all([
+      tx.tag.findUnique({ where: { id: parsed.data.sourceId }, include: { threads: true } }),
+      tx.tag.findUnique({ where: { id: parsed.data.destinationId } }),
+    ]);
+    if (!source || !destination) return { error: "One of those tags no longer exists." } as const;
     await tx.threadTag.createMany({ data: source.threads.map((item) => ({ threadId: item.threadId, tagId: destination.id })), skipDuplicates: true });
     await tx.threadTag.deleteMany({ where: { tagId: source.id } });
     await tx.tagAlias.updateMany({ where: { tagId: source.id }, data: { tagId: destination.id } });
@@ -371,7 +417,10 @@ export async function mergeTag(_state: StaffActionState, formData: FormData): Pr
       type: "MERGE_TAG", moderatorId: admin.id, targetType: "TAG", targetId: destination.id,
       reason: `${source.name} merged into ${destination.name}`, metadata: { sourceId: source.id, sourceSlug: source.slug },
     } });
-  });
+    return { source, destination } as const;
+  }, { retryUnique: true });
+  if ("error" in result && result.error) return initialError(result.error);
+  const { source, destination } = result;
   refreshStaff("/staff/tags", `/tag/${source.slug}`, `/tag/${destination.slug}`);
   return success("Tags merged and the old URL will redirect.");
 }

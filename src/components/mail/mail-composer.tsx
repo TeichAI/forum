@@ -26,7 +26,15 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeResult, setActiveResult] = useState(-1);
   const [saveState, setSaveState] = useState<MailActionState>(draft ? { status: "saved", message: "Draft saved" } : idle);
-  const [sendState, sendAction, sending] = useActionState<MailActionState, FormData>(async (_state, data) => await sendMail(data), idle);
+  const draftIdRef = useRef(draft?.id);
+  const draftSaveRef = useRef<Promise<MailActionState> | null>(null);
+  const currentRef = useRef({ recipients, subject, body });
+  currentRef.current = { recipients, subject, body };
+  const [sendState, sendAction, sending] = useActionState<MailActionState, FormData>(async (_state, data) => {
+    if (draftSaveRef.current) await draftSaveRef.current;
+    if (draftIdRef.current) data.set("draftId", draftIdRef.current);
+    return await sendMail(data);
+  }, idle);
   const [, startTransition] = useTransition();
   const textarea = useRef<HTMLTextAreaElement>(null);
   const recipientInput = useRef<HTMLInputElement>(null);
@@ -60,15 +68,8 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
     if (current === lastSaved.current || (!subject && !body && !recipients.length)) return;
     setSaveState({ status: "idle", message: "Unsaved changes" });
     const timer = window.setTimeout(() => {
-      const data = makeDraftData();
       startTransition(() => {
-        void saveMailDraft(data).then((state) => {
-          setSaveState(state);
-          if (state.status === "saved") {
-            setDraftId(state.draftId);
-            lastSaved.current = current;
-          }
-        });
+        void saveDraft();
       });
     }, 1_000);
     return () => window.clearTimeout(timer);
@@ -76,14 +77,44 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, draft?.threadId]);
 
-  function makeDraftData() {
+  function makeDraftData(values = currentRef.current) {
     const data = new FormData();
-    if (draftId) data.set("draftId", draftId);
+    if (draftIdRef.current) data.set("draftId", draftIdRef.current);
     if (draft?.threadId) data.set("threadId", draft.threadId);
-    data.set("subject", subject);
-    data.set("body", body);
-    recipients.forEach((recipient) => data.append("recipientId", recipient.id));
+    data.set("subject", values.subject);
+    data.set("body", values.body);
+    values.recipients.forEach((recipient) => data.append("recipientId", recipient.id));
     return data;
+  }
+
+  function saveDraft() {
+    const previous = draftSaveRef.current;
+    const request = (async (): Promise<MailActionState> => {
+      if (previous) await previous;
+      const values = currentRef.current;
+      const snapshot = JSON.stringify({ recipients: values.recipients.map((item) => item.id), subject: values.subject, body: values.body });
+      if (draftIdRef.current && snapshot === lastSaved.current) {
+        return { status: "saved", message: "Draft saved", draftId: draftIdRef.current };
+      }
+      try {
+        const state = await saveMailDraft(makeDraftData(values));
+        if (state.status === "saved") lastSaved.current = snapshot;
+        return state;
+      } catch {
+        return { status: "error", message: "We couldn’t save this draft." };
+      }
+    })();
+    draftSaveRef.current = request;
+    void request.then((state) => {
+      setSaveState(state);
+      if (state.status === "saved") {
+        draftIdRef.current = state.draftId;
+        setDraftId(state.draftId);
+      }
+    }).finally(() => {
+      if (draftSaveRef.current === request) draftSaveRef.current = null;
+    });
+    return request;
   }
 
   function wrap(before: string, after = before, placeholder = "text") {
@@ -99,14 +130,16 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
 
   async function saveAndClose() {
     setSaveState({ status: "idle", message: "Saving…" });
-    const state = await saveMailDraft(makeDraftData());
+    if (draftSaveRef.current) await draftSaveRef.current;
+    const state = await saveDraft();
     setSaveState(state);
     if (state.status === "saved") router.push("/mail?folder=drafts");
   }
 
   async function discard() {
-    if (draftId) {
-      const data = new FormData(); data.set("draftId", draftId);
+    if (draftSaveRef.current) await draftSaveRef.current;
+    if (draftIdRef.current) {
+      const data = new FormData(); data.set("draftId", draftIdRef.current);
       await deleteMailDraft(data);
     }
     router.push("/mail");

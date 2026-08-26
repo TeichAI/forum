@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AttachmentContext } from "@prisma/client";
+import type { AttachmentContext, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { uploadsEnabled } from "@/lib/upload-capability";
 
@@ -10,9 +10,10 @@ export async function claimAttachments(
   context: Exclude<AttachmentContext, "DRAFT">,
   targetId: string,
   draftId?: string,
+  client: Pick<Prisma.TransactionClient, "attachment"> = db,
 ) {
   if (!uploadsEnabled()) return;
-  const attachments = await db.attachment.findMany({
+  const attachments = await client.attachment.findMany({
     where: {
       userId,
       OR: [
@@ -24,6 +25,6 @@ export async function claimAttachments(
   });
   const ids = attachments.filter((attachment) => body.includes(attachment.url)).map((attachment) => attachment.id);
   if (ids.length) {
-    await db.attachment.updateMany({ where: { id: { in: ids } }, data: { context, targetId } });
+    await client.attachment.updateMany({ where: { id: { in: ids } }, data: { context, targetId } });
   }
 }

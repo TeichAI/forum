@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { decodeCursor, encodeCursor } from "@/lib/queries";
 
 export const MAIL_FOLDERS = ["inbox", "starred", "sent", "drafts", "archive", "trash"] as const;
 export type MailFolder = (typeof MAIL_FOLDERS)[number];
@@ -33,21 +34,30 @@ function participantWhere(userId: string, folder: Exclude<MailFolder, "drafts">)
 }
 
 export async function getMailCounts(userId: string) {
-  const [participants, drafts] = await Promise.all([
-    db.mailParticipant.findMany({
-      where: { userId, removedAt: null },
-      select: { location: true, starred: true, lastReadAt: true, forcedUnread: true, thread: { select: { lastActivityAt: true, entries: { where: { authorId: userId }, take: 1, select: { id: true } } } } },
-    }),
+  const [rows, drafts] = await Promise.all([
+    db.$queryRaw<Array<{ inbox: bigint; unread: bigint; starred: bigint; sent: bigint; archive: bigint; trash: bigint }>>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE mp."location" = 'INBOX') AS inbox,
+        COUNT(*) FILTER (WHERE mp."location" = 'INBOX' AND (mp."forcedUnread" OR mp."lastReadAt" IS NULL OR mp."lastReadAt" < mt."lastActivityAt")) AS unread,
+        COUNT(*) FILTER (WHERE mp."starred" AND mp."location" <> 'TRASH') AS starred,
+        COUNT(*) FILTER (WHERE mp."location" <> 'TRASH' AND EXISTS (SELECT 1 FROM "MailEntry" me WHERE me."threadId" = mp."threadId" AND me."authorId" = ${userId})) AS sent,
+        COUNT(*) FILTER (WHERE mp."location" = 'ARCHIVE') AS archive,
+        COUNT(*) FILTER (WHERE mp."location" = 'TRASH') AS trash
+      FROM "MailParticipant" mp
+      JOIN "MailThread" mt ON mt."id" = mp."threadId"
+      WHERE mp."userId" = ${userId} AND mp."removedAt" IS NULL
+    `),
     db.mailDraft.count({ where: { ownerId: userId } }),
   ]);
+  const counts = rows[0] ?? { inbox: BigInt(0), unread: BigInt(0), starred: BigInt(0), sent: BigInt(0), archive: BigInt(0), trash: BigInt(0) };
   return {
-    inbox: participants.filter((item) => item.location === "INBOX").length,
-    unread: participants.filter((item) => item.location === "INBOX" && isMailUnread(item)).length,
-    starred: participants.filter((item) => item.starred && item.location !== "TRASH").length,
-    sent: participants.filter((item) => item.location !== "TRASH" && item.thread.entries.length > 0).length,
+    inbox: Number(counts.inbox),
+    unread: Number(counts.unread),
+    starred: Number(counts.starred),
+    sent: Number(counts.sent),
     drafts,
-    archive: participants.filter((item) => item.location === "ARCHIVE").length,
-    trash: participants.filter((item) => item.location === "TRASH").length,
+    archive: Number(counts.archive),
+    trash: Number(counts.trash),
   };
 }
 
@@ -56,20 +66,28 @@ export async function listMail(userId: string, options: { folder?: MailFolder; q
   const take = Math.min(Math.max(options.take ?? 25, 1), 50);
   const query = options.query?.trim().slice(0, 100);
   if (folder === "drafts") {
+    const cursor = decodeCursor<{ updatedAt: string; id: string }>(options.cursor);
+    const cursorTime = cursor && !Number.isNaN(Date.parse(cursor.updatedAt)) ? new Date(cursor.updatedAt) : null;
+    const cursorId = cursor?.id;
     const items = await db.mailDraft.findMany({
       where: {
         ownerId: userId,
         ...(query ? { OR: [{ subject: { contains: query, mode: "insensitive" } }, { body: { contains: query, mode: "insensitive" } }] } : {}),
+        AND: cursorTime && cursorId ? { OR: [{ updatedAt: { lt: cursorTime } }, { updatedAt: cursorTime, id: { lt: cursorId } }] } : undefined,
       },
       include: { recipients: { include: { recipient: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } } } } },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take: take + 1,
-      ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
     });
     const hasMore = items.length > take;
-    return { kind: "drafts" as const, items: items.slice(0, take), nextCursor: hasMore ? items[take - 1]?.id ?? null : null };
+    const visible = items.slice(0, take);
+    const last = visible.at(-1);
+    return { kind: "drafts" as const, items: visible, nextCursor: hasMore && last ? encodeCursor({ updatedAt: last.updatedAt.toISOString(), id: last.id }) : null };
   }
 
+  const cursor = decodeCursor<{ lastActivityAt: string; id: string }>(options.cursor);
+  const cursorTime = cursor && !Number.isNaN(Date.parse(cursor.lastActivityAt)) ? new Date(cursor.lastActivityAt) : null;
+  const cursorId = cursor?.id;
   const where: Prisma.MailParticipantWhereInput = {
     ...participantWhere(userId, folder),
     ...(query ? {
@@ -82,16 +100,18 @@ export async function listMail(userId: string, options: { folder?: MailFolder; q
         ],
       },
     } : {}),
+    AND: cursorTime && cursorId ? { OR: [{ thread: { lastActivityAt: { lt: cursorTime } } }, { thread: { lastActivityAt: cursorTime }, threadId: { lt: cursorId } }] } : undefined,
   };
   const rows = await db.mailParticipant.findMany({
     where,
     include: { thread: { include: mailThreadInclude } },
     orderBy: [{ thread: { lastActivityAt: "desc" } }, { threadId: "desc" }],
     take: take + 1,
-    ...(options.cursor ? { cursor: { threadId_userId: { threadId: options.cursor, userId } }, skip: 1 } : {}),
   });
   const hasMore = rows.length > take;
-  return { kind: "threads" as const, items: rows.slice(0, take), nextCursor: hasMore ? rows[take - 1]?.threadId ?? null : null };
+  const visible = rows.slice(0, take);
+  const last = visible.at(-1);
+  return { kind: "threads" as const, items: visible, nextCursor: hasMore && last ? encodeCursor({ lastActivityAt: last.thread.lastActivityAt.toISOString(), id: last.threadId }) : null };
 }
 
 export async function getMailThread(userId: string, threadId: string) {

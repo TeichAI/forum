@@ -7,26 +7,29 @@ import { NewThreadTrigger } from "@/components/new-thread-trigger";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { canModerate, listThreads } from "@/lib/queries";
+import { canModerate, listThreadsPage } from "@/lib/queries";
 import { canStartDiscussion } from "@/lib/space-posting-permissions";
+import { unavailableMetadata } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const category = await db.category.findUnique({ where: { slug } });
-  return { title: category?.name ?? "Space", description: category?.description };
+  const category = await db.category.findFirst({ where: { slug, archivedAt: null } });
+  return category ? { title: category.name, description: category.description } : unavailableMetadata;
 }
 
-export default async function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function CategoryPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ cursor?: string }> }) {
   const { slug } = await params;
+  const { cursor } = await searchParams;
   const [category, viewer] = await Promise.all([
     db.category.findUnique({ where: { slug } }),
     getViewer(),
   ]);
   if (!category || (category.archivedAt && !canModerate(viewer))) notFound();
 
-  const threads = await listThreads({ categoryId: category.id });
+  const threadPage = await listThreadsPage({ categoryId: category.id, cursor });
+  const threads = threadPage.items;
   const canViewerStart = !category.archivedAt && (viewer
     ? canStartDiscussion(viewer.role, category.postingPolicy)
     : category.postingPolicy === "OPEN");
@@ -69,6 +72,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
           <EmptyState title="No discussions here yet." description="Be the first to share an idea in this space." action={canViewerStart ? <NewThreadTrigger categoryId={category.id} className="button button-primary">Start a discussion</NewThreadTrigger> : null} />
         )}
       </div>
+      {threadPage.nextCursor && <div className="mt-4 text-center"><a className="button button-secondary" href={`/c/${category.slug}?cursor=${encodeURIComponent(threadPage.nextCursor)}`}>More discussions</a></div>}
     </div>
   );
 }

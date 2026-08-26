@@ -1,8 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ mode: vi.fn(), viewer: vi.fn(), categories: vi.fn(), uploads: vi.fn(), accessMode: vi.fn() }));
+const mocks = vi.hoisted(() => ({ mode: vi.fn(), viewer: vi.fn(), sessionUser: vi.fn(), categories: vi.fn(), uploads: vi.fn(), accessMode: vi.fn() }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
-vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer }));
+vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, getSessionUser: mocks.sessionUser }));
 vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.categories } } }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: mocks.uploads }));
 vi.mock("@/lib/access-mode", () => ({ getClerkAccessMode: mocks.accessMode }));
@@ -15,6 +15,7 @@ import RootLayout, { metadata } from "./layout";
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.viewer.mockResolvedValue(null);
+  mocks.sessionUser.mockResolvedValue(null);
   mocks.categories.mockResolvedValue([]);
   mocks.uploads.mockReturnValue(false);
   mocks.accessMode.mockReturnValue("waitlist");

@@ -174,7 +174,7 @@ describe("staff console pages", () => {
     mocks.moderationCase.findMany.mockResolvedValue([]);
     let view = render(await ReportsPage({ searchParams: Promise.resolve({ page: "99" }) }));
     expect(screen.getByText("Page 4 of 4")).toBeInTheDocument();
-    expect(mocks.moderationCase.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 75, take: 25 }));
+    expect(mocks.moderationCase.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ skip: 75, take: 26 }));
     view.unmount();
 
     view = render(await ReportsPage({ searchParams: Promise.resolve({ page: "2.9" }) }));

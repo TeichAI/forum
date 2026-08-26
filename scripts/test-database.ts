@@ -72,6 +72,68 @@ function verifyMailMigrationRecoversFromOrphanEnum(env: Environment) {
   }
 }
 
+function verifyVisibilityMigrationMergesActiveCases(env: Environment) {
+  const migrationName = "20260825213000_visibility_and_cursor_indexes";
+  const sourcePrismaDirectory = join(process.cwd(), "prisma");
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "teich-visibility-migration-"));
+  const temporaryPrismaDirectory = join(temporaryRoot, "prisma");
+  const temporaryMigrationsDirectory = join(temporaryPrismaDirectory, "migrations");
+  const seedPath = join(temporaryRoot, "seed.sql");
+  const verifyPath = join(temporaryRoot, "verify.sql");
+
+  try {
+    mkdirSync(temporaryMigrationsDirectory, { recursive: true });
+    cpSync(join(sourcePrismaDirectory, "schema.prisma"), join(temporaryPrismaDirectory, "schema.prisma"));
+    cpSync(join(sourcePrismaDirectory, "migrations", "migration_lock.toml"), join(temporaryMigrationsDirectory, "migration_lock.toml"));
+
+    for (const prerequisite of [
+      "20260823220302_init",
+      "20260824120000_reset_roles_for_clerk",
+      "20260824180000_add_space_posting_policy",
+      "20260824220000_staff_console",
+      "20260825120000_application_rate_limits",
+      "20260825180000_replace_messages_with_mail",
+      "20260825190000_add_nested_replies",
+      "20260825200000_add_dislikes",
+    ]) {
+      cpSync(
+        join(sourcePrismaDirectory, "migrations", prerequisite),
+        join(temporaryMigrationsDirectory, prerequisite),
+        { recursive: true },
+      );
+    }
+
+    const temporarySchema = join(temporaryPrismaDirectory, "schema.prisma");
+    run("npx", ["prisma", "migrate", "reset", "--force", "--skip-seed", "--skip-generate", "--schema", temporarySchema], env);
+    writeFileSync(seedPath, `
+      INSERT INTO "ModerationCase" ("id", "targetType", "targetId", "status", "priority", "createdAt", "updatedAt")
+      VALUES
+        ('case-oldest', 'THREAD', 'same-target', 'OPEN', 'NORMAL', '2026-08-25T10:00:00Z', CURRENT_TIMESTAMP),
+        ('case-newer', 'THREAD', 'same-target', 'IN_REVIEW', 'HIGH', '2026-08-25T11:00:00Z', CURRENT_TIMESTAMP);
+    `);
+    run("npx", ["prisma", "db", "execute", "--schema", temporarySchema, "--file", seedPath], env);
+
+    cpSync(
+      join(sourcePrismaDirectory, "migrations", migrationName),
+      join(temporaryMigrationsDirectory, migrationName),
+      { recursive: true },
+    );
+    run("npx", ["prisma", "migrate", "deploy", "--schema", temporarySchema], env);
+    writeFileSync(verifyPath, `
+      DO $$
+      BEGIN
+        IF (SELECT COUNT(*) FROM "ModerationCase" WHERE "targetType" = 'THREAD' AND "targetId" = 'same-target') <> 1 THEN
+          RAISE EXCEPTION 'active moderation cases were not merged';
+        END IF;
+      END
+      $$;
+    `);
+    run("npx", ["prisma", "db", "execute", "--schema", temporarySchema, "--file", verifyPath], env);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
 export function runWithTestDatabase(command: string, args: string[], extraEnv: Environment = {}) {
   checkedDatabaseUrl();
   const ownsContainer = !process.env.TEST_DATABASE_URL;
@@ -81,6 +143,7 @@ export function runWithTestDatabase(command: string, args: string[], extraEnv: E
       run("docker", ["compose", "--profile", "test", "up", "-d", "--wait", "database-test"], env);
     }
     verifyMailMigrationRecoversFromOrphanEnum(env);
+    verifyVisibilityMigrationMergesActiveCases(env);
     run("npx", ["prisma", "migrate", "reset", "--force", "--skip-seed"], env);
     run(command, args, env);
   } finally {

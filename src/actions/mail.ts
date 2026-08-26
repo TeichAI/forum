@@ -105,10 +105,11 @@ export async function saveMailDraft(formData: FormData): Promise<MailActionState
       if (!participant || participant.removedAt) return { status: "error", message: "This mail thread is unavailable." };
     }
     const saved = await db.$transaction(async (tx) => {
+      let result;
       if (draftId.data) {
         const owned = await tx.mailDraft.findFirst({ where: { id: draftId.data, ownerId: user.id }, select: { id: true } });
         if (!owned) throw new Error("This draft is no longer available.");
-        return tx.mailDraft.update({
+        result = await tx.mailDraft.update({
           where: { id: owned.id },
           data: {
             subject,
@@ -117,12 +118,14 @@ export async function saveMailDraft(formData: FormData): Promise<MailActionState
             recipients: { deleteMany: {}, create: ids.map((recipientId) => ({ recipientId })) },
           },
         });
+      } else {
+        result = await tx.mailDraft.create({
+          data: { ownerId: user.id, threadId: threadId.data, subject, body, recipients: { create: ids.map((recipientId) => ({ recipientId })) } },
+        });
       }
-      return tx.mailDraft.create({
-        data: { ownerId: user.id, threadId: threadId.data, subject, body, recipients: { create: ids.map((recipientId) => ({ recipientId })) } },
-      });
+      await claimAttachments(body, user.id, "MAIL_DRAFT", result.id, result.id, tx);
+      return result;
     });
-    await claimAttachments(body, user.id, "MAIL_DRAFT", saved.id, saved.id);
     refreshMail(threadId.data);
     return { status: "saved", message: "Draft saved", draftId: saved.id, savedAt: saved.updatedAt.toISOString() };
   } catch (error) {
@@ -136,9 +139,12 @@ export async function deleteMailDraft(formData: FormData): Promise<MailActionSta
   if (limited) return limited;
   const parsed = idSchema.safeParse(formData.get("draftId"));
   if (!parsed.success) return { status: "error", message: "Choose a valid draft." };
-  const deleted = await db.mailDraft.deleteMany({ where: { id: parsed.data, ownerId: user.id } });
+  const deleted = await db.$transaction(async (tx) => {
+    const result = await tx.mailDraft.deleteMany({ where: { id: parsed.data, ownerId: user.id } });
+    if (result.count) await tx.attachment.updateMany({ where: { userId: user.id, context: "MAIL_DRAFT", targetId: parsed.data }, data: { context: "DRAFT", targetId: null } });
+    return result;
+  });
   if (!deleted.count) return { status: "error", message: "This draft is no longer available." };
-  await db.attachment.updateMany({ where: { userId: user.id, context: "MAIL_DRAFT", targetId: parsed.data }, data: { context: "DRAFT", targetId: null } });
   refreshMail();
   return { status: "success", message: "Draft deleted." };
 }
@@ -189,9 +195,9 @@ export async function sendMail(formData: FormData): Promise<MailActionState | ne
       sent.push({ threadId: thread.id, entryId: thread.entries[0]!.id });
     }
     if (draftId) await tx.mailDraft.delete({ where: { id: draftId } });
+    await claimAttachments(body.data, user.id, "MAIL_ENTRY", sent[0]!.entryId, draftId, tx);
     return sent;
   });
-  await claimAttachments(body.data, user.id, "MAIL_ENTRY", created[0]!.entryId, draftId);
   refreshMail();
   if (created.length === 1) redirect(`/mail/${created[0]!.threadId}`);
   redirect("/mail?folder=sent");
@@ -214,14 +220,14 @@ export async function replyToMail(formData: FormData): Promise<MailActionState> 
   const blocked = await db.block.findFirst({ where: { OR: [{ blockerId: user.id, blockedId: recipient.id }, { blockerId: recipient.id, blockedId: user.id }] } });
   if (blocked) return { status: "error", message: "Mail is unavailable for this member." };
   const now = new Date();
-  const entry = await db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     const created = await tx.mailEntry.create({ data: { threadId: threadId.data, authorId: user.id, body: body.data, createdAt: now } });
     await tx.mailThread.update({ where: { id: threadId.data }, data: { lastActivityAt: now } });
     await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: user.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false, lastReadAt: now } });
     await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: recipient.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false } });
+    await claimAttachments(body.data, user.id, "MAIL_ENTRY", created.id, undefined, tx);
     return created;
   });
-  await claimAttachments(body.data, user.id, "MAIL_ENTRY", entry.id);
   refreshMail(threadId.data);
   return { status: "success", message: "Reply sent." };
 }

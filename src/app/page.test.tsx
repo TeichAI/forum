@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.getViewer }));
-vi.mock("@/lib/queries", () => ({ listThreads: mocks.listThreads }));
+vi.mock("@/lib/queries", () => ({ listThreadsPage: mocks.listThreads }));
 vi.mock("@/lib/db", () => ({
   db: {
     category: { findMany: mocks.findCategories },
@@ -30,7 +30,7 @@ vi.mock("@/components/new-thread-trigger", () => ({
 
 beforeEach(() => {
   mocks.getViewer.mockReset();
-  mocks.listThreads.mockReset().mockResolvedValue([]);
+  mocks.listThreads.mockReset().mockResolvedValue({ items: [], nextCursor: null });
   mocks.findCategories.mockReset().mockResolvedValue([{ id: "category", name: "General" }]);
   mocks.countUsers.mockReset().mockResolvedValue(1_234);
   mocks.categoryList.mockReset();
@@ -59,7 +59,7 @@ describe("home page", () => {
     expect(screen.queryByText(/Ideas grow better/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Start a discussion/ })).not.toBeInTheDocument();
     expect(mocks.countUsers).not.toHaveBeenCalled();
-    expect(mocks.listThreads).toHaveBeenCalledWith({ sort: "new" });
+    expect(mocks.listThreads).toHaveBeenCalledWith({ sort: "new", cursor: undefined });
     expect(mocks.categoryList).toHaveBeenCalledWith({ categories: expect.any(Array) });
   });
 

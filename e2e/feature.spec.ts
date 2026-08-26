@@ -57,6 +57,18 @@ test("anonymous visitors can discover public content", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Sign in to reply" })).toBeVisible();
 });
 
+test("keyboard and reduced-motion preferences receive accessible navigation", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  const skip = page.getByRole("link", { name: "Skip to main content" });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
+});
+
 test("a member updates their profile and publishes a tagged discussion", async ({ context, page }) => {
   await useIdentity(context, featureIds.member);
   await page.goto("/settings");

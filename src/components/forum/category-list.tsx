@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { Hash } from "lucide-react";
 import type { Category } from "@prisma/client";
-import { CreateSpaceDialog } from "@/components/forum/create-space-dialog";
 import { PostingPolicyBadge } from "@/components/forum/space-posting-policy";
 
-export function CategoryList({ categories, canCreateSpace = false }: { categories: (Category & { _count?: { threads: number } })[]; canCreateSpace?: boolean }) {
+export function CategoryList({ categories }: { categories: (Category & { _count?: { threads: number } })[] }) {
   return (
     <aside className="card overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: "var(--line)" }}>
@@ -12,7 +11,6 @@ export function CategoryList({ categories, canCreateSpace = false }: { categorie
           <div className="text-xs font-extrabold uppercase tracking-widest" style={{ color: "var(--foreground)" }}>Spaces</div>
           <div className="text-xs muted">Browse by topic</div>
         </div>
-        {canCreateSpace && <CreateSpaceDialog />}
       </div>
       <nav className="p-2">
         {categories.length ? (

@@ -16,7 +16,15 @@ export type HeaderViewer = {
   role: ForumRole;
 };
 
-export async function Header({ viewer, accessMode = "public" }: { viewer: HeaderViewer | null; accessMode?: ClerkAccessMode }) {
+export async function Header({
+  viewer,
+  accountViewer = viewer,
+  accessMode = "public",
+}: {
+  viewer: HeaderViewer | null;
+  accountViewer?: HeaderViewer | null;
+  accessMode?: ClerkAccessMode;
+}) {
   const [unread, mailCounts] = viewer ? await Promise.all([
     db.notification.count({ where: { recipientId: viewer.id, readAt: null } }),
     getMailCounts(viewer.id),
@@ -74,6 +82,12 @@ export async function Header({ viewer, accessMode = "public" }: { viewer: Header
                 <AccountMenu id={viewer.id} displayName={viewer.displayName} username={viewer.username} imageUrl={viewer.imageUrl} role={viewer.role} />
               )}
             </>
+          ) : accountViewer ? (
+            isE2ETestMode() ? (
+              <span className="pill ml-1">Test user</span>
+            ) : (
+              <AccountMenu {...accountViewer} restricted />
+            )
           ) : (
             <>
               <Link href="/sign-in" className="button button-secondary">

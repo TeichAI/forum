@@ -2,6 +2,7 @@ import "server-only";
 
 import type { UserRole } from "@prisma/client";
 import { cache } from "react";
+import { canModerateAuthor } from "@/lib/access";
 import { db } from "@/lib/db";
 
 export const DEFAULT_MODERATION_SETTINGS = {
@@ -21,9 +22,7 @@ export const getModerationSettings = cache(async () => {
 });
 
 export function canModerateRole(actorRole: UserRole, targetRole: UserRole) {
-  if (targetRole === "ADMIN") return false;
-  if (actorRole === "ADMIN") return true;
-  return actorRole === "MODERATOR" && targetRole === "MEMBER";
+  return canModerateAuthor(actorRole, targetRole);
 }
 
 export function staffCanSeeEmail(role: UserRole) {

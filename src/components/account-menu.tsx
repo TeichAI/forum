@@ -14,6 +14,7 @@ type AccountMenuProps = {
   username: string;
   imageUrl: string | null;
   role: ForumRole;
+  restricted?: boolean;
 };
 
 function subscribeToHydration() {
@@ -28,7 +29,7 @@ function getServerSnapshot() {
   return false;
 }
 
-export function AccountMenu({ id, displayName, username, imageUrl, role }: AccountMenuProps) {
+export function AccountMenu({ id, displayName, username, imageUrl, role, restricted = false }: AccountMenuProps) {
   const { signOut } = useClerk();
   const { user } = useUser();
   const [open, setOpen] = useState(false);
@@ -114,11 +115,11 @@ export function AccountMenu({ id, displayName, username, imageUrl, role }: Accou
             <div className="truncate text-xs muted">@{username}</div>
           </div>
           <div className="py-1">
-            <Link href="/settings" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
+            {!restricted && <Link href="/settings" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
               <Settings size={17} aria-hidden="true" />
               Account settings
-            </Link>
-            {(role === "MODERATOR" || role === "ADMIN") && (
+            </Link>}
+            {!restricted && (role === "MODERATOR" || role === "ADMIN") && (
               <Link href="/staff" onClick={() => setOpen(false)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold hover:bg-[var(--surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]">
                 <ShieldCheck size={17} aria-hidden="true" />
                 Staff console
