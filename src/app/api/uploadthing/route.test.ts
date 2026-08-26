@@ -1,9 +1,42 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({ viewer: vi.fn(), consume: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: vi.fn() }));
+vi.mock("@/lib/rate-limit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/rate-limit")>()),
+  consumeUserMutation: mocks.consume,
+}));
+
 describe("UploadThing route capability", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
+  });
+
+  it("fails upload mutations closed with a standards-based 503", async () => {
+    vi.stubEnv("UPLOADTHING_TOKEN", "configured-for-mutation");
+    mocks.viewer.mockResolvedValue({ id: "local", clerkId: "clerk", role: "MEMBER" });
+    mocks.consume.mockResolvedValue({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: "later", remaining: 0 });
+    const { POST } = await import("./route");
+    const { NextRequest } = await import("next/server");
+    const response = await POST(new NextRequest("http://localhost/api/uploadthing", { method: "POST" }));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("passes signed-provider hook requests to UploadThing instead of requiring a browser session", async () => {
+    vi.stubEnv("UPLOADTHING_TOKEN", "configured-for-callback");
+    mocks.viewer.mockClear();
+    const { POST } = await import("./route");
+    const { NextRequest } = await import("next/server");
+    const response = await POST(new NextRequest("http://localhost/api/uploadthing?slug=mailImageUploader", {
+      method: "POST",
+      headers: { "uploadthing-hook": "callback", "x-uploadthing-signature": "invalid" },
+      body: "{}",
+    }));
+    expect(response.status).not.toBe(401);
+    expect(mocks.viewer).not.toHaveBeenCalled();
   });
 
   it("rejects GET and POST requests without initializing UploadThing", async () => {
@@ -27,6 +60,9 @@ describe("UploadThing route capability", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual(expect.arrayContaining([expect.objectContaining({ slug: "imageUploader" })]));
+    expect(body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ slug: "imageUploader" }),
+      expect.objectContaining({ slug: "mailImageUploader" }),
+    ]));
   });
 });

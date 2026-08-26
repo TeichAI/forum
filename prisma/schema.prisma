@@ -93,6 +93,11 @@ enum AttachmentContext {
   DRAFT
 }
 
+enum AttachmentAccess {
+  PUBLIC
+  PRIVATE
+}
+
 enum MailLocation {
   INBOX
   ARCHIVE
@@ -512,6 +517,7 @@ model Attachment {
   url       String
   name      String
   size      Int
+  access    AttachmentAccess  @default(PUBLIC)
   context   AttachmentContext @default(DRAFT)
   targetId  String?
   userId    String
@@ -520,6 +526,7 @@ model Attachment {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([context, targetId])
+  @@index([access, context, targetId])
   @@index([context, createdAt])
 }
 

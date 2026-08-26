@@ -1,3 +1,5 @@
+import { BodyTooLargeError, readBoundedBody } from "@/lib/bounded-body";
+
 const MAX_REPORT_BYTES = 16_384;
 
 function safeDirective(value: unknown) {
@@ -5,10 +7,13 @@ function safeDirective(value: unknown) {
 }
 
 export async function POST(request: Request) {
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(length) && length > MAX_REPORT_BYTES) return new Response(null, { status: 413 });
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_REPORT_BYTES) return new Response(null, { status: 413 });
+  let text: string;
+  try {
+    text = await readBoundedBody(request, MAX_REPORT_BYTES);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return new Response(null, { status: 413 });
+    return Response.json({ error: "Invalid report" }, { status: 400 });
+  }
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
     const report = (parsed["csp-report"] ?? parsed.body ?? parsed) as Record<string, unknown>;

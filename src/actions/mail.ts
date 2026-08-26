@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   consumeRateLimit,
+  consumeMutationRateLimit,
   consumeUserMutation,
   mailSendPolicies,
   mailThreadPolicy,
@@ -167,7 +168,7 @@ export async function sendMail(formData: FormData): Promise<MailActionState | ne
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Choose valid recipients.", fieldErrors: { recipients: "Check the recipients." } };
   }
-  const rate = await consumeRateLimit({ kind: "user", value: user.clerkId }, mailSendPolicies(user, recipients.length));
+  const rate = await consumeMutationRateLimit({ kind: "user", value: user.clerkId }, mailSendPolicies(user, recipients.length));
   if (!rate.allowed) return rateLimitedActionState(rate);
   const rawDraftId = formData.get("draftId");
   const draftId = rawDraftId ? idSchema.parse(rawDraftId) : undefined;

@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), remove: vi.fn(), search: vi.fn(), send: vi.fn(), push: vi.fn() }));
+const mocks = vi.hoisted(() => ({ save: vi.fn(), remove: vi.fn(), search: vi.fn(), send: vi.fn(), push: vi.fn(), uploadEndpoint: vi.fn() }));
 vi.mock("@/actions/mail", () => ({ saveMailDraft: mocks.save, deleteMailDraft: mocks.remove, searchMailRecipients: mocks.search, sendMail: mocks.send }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock("@/lib/uploadthing", () => ({ UploadButton: ({ onClientUploadComplete }: { onClientUploadComplete: (files: Array<{ name: string; serverData: { url: string } }>) => void }) => <button type="button" onClick={() => onClientUploadComplete([{ name: "pond.png", serverData: { url: "https://utfs.io/pond" } }])}>Mock upload</button> }));
+vi.mock("@/lib/uploadthing", () => ({ UploadButton: ({ endpoint, onClientUploadComplete }: { endpoint: string; onClientUploadComplete: (files: Array<{ name: string; serverData: { url: string } }>) => void }) => {
+  mocks.uploadEndpoint(endpoint);
+  return <button type="button" onClick={() => onClientUploadComplete([{ name: "pond.png", serverData: { url: "/api/attachments/private" } }])}>Mock upload</button>;
+} }));
 
 import { MailComposer } from "./mail-composer";
 
@@ -47,7 +50,9 @@ describe("MailComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bold" }));
     expect(body).toHaveValue("**words**");
     fireEvent.click(screen.getByRole("button", { name: "Mock upload" }));
-    expect((body as HTMLTextAreaElement).value).toContain("![pond.png](https://utfs.io/pond)");
+    expect(mocks.uploadEndpoint).toHaveBeenCalledWith("mailImageUploader");
+    expect((body as HTMLTextAreaElement).value).toContain("![pond.png](/api/attachments/private)");
+    expect((body as HTMLTextAreaElement).value).not.toContain("ufs.sh");
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(mocks.save).toHaveBeenCalledWith(expect.any(FormData));
     expect(screen.getByRole("status")).toHaveTextContent("Draft saved");

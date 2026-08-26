@@ -23,7 +23,7 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => {
 });
 
 const user = { id: "local_1", clerkId: "user_1", username: "owen", status: "ACTIVE" };
-const request = (body: unknown = { confirmation: "owen" }) => new Request("http://localhost/api/account/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const request = (body: unknown = { confirmation: "owen" }, origin = "http://localhost:3000") => new Request("http://localhost:3000/api/account/delete", { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify(body) });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,8 +58,39 @@ describe("POST /api/account/delete", () => {
     mocks.findUnique.mockResolvedValueOnce(null);
     expect((await POST(request())).status).toBe(404);
 
-    const invalid = new Request("http://localhost/api/account/delete", { method: "POST", body: "{" });
+    const invalid = new Request("http://localhost:3000/api/account/delete", { method: "POST", headers: { origin: "http://localhost:3000" }, body: "{" });
     expect((await POST(invalid)).status).toBe(400);
+  });
+
+  it("rejects missing, malformed, and cross-origin requests before authentication or deletion", async () => {
+    const { POST } = await import("./route");
+    for (const origin of ["", "not a URL", "https://attacker.example"]) {
+      const response = await POST(request({ confirmation: "owen" }, origin));
+      expect(response.status).toBe(403);
+    }
+    expect(mocks.auth).not.toHaveBeenCalled();
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with 503 when mutation rate-limit storage is unavailable", async () => {
+    const { POST } = await import("./route");
+    mocks.consumeUserMutation.mockResolvedValueOnce({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: "later", remaining: 0 });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects account-deletion JSON larger than 4 KiB", async () => {
+    const { POST } = await import("./route");
+    const oversized = new Request("http://localhost:3000/api/account/delete", {
+      method: "POST",
+      headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify({ confirmation: "owen", padding: "x".repeat(4_096) }),
+    });
+    const response = await POST(oversized);
+    expect(response.status).toBe(413);
+    expect(mocks.deleteUser).not.toHaveBeenCalled();
   });
 
   it("checks the exact username before requesting reverification", async () => {

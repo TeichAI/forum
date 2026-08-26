@@ -4,7 +4,11 @@ import { isE2ETestMode } from "@/lib/e2e-auth";
 import { consumeRateLimit, RATE_LIMIT_POLICIES, railwayClientIp } from "@/lib/rate-limit";
 
 function isLimitedRead(request: NextRequest) {
-  return request.method === "GET" && request.nextUrl.pathname !== "/rate-limited";
+  return request.method === "GET" && !["/rate-limited", "/healthz", "/readyz"].includes(request.nextUrl.pathname);
+}
+
+function isHealthCheck(request: NextRequest) {
+  return request.nextUrl.pathname === "/healthz" || request.nextUrl.pathname === "/readyz";
 }
 
 function limitedResponse(request: NextRequest, retryAfterSeconds: number, resetAt: string) {
@@ -32,16 +36,47 @@ const clerkProxy = clerkMiddleware(async (authResult, request) => {
     policies,
   );
   return result.allowed ? NextResponse.next() : limitedResponse(request, result.retryAfterSeconds, result.resetAt);
+}, {
+  contentSecurityPolicy: {
+    strict: true,
+    reportTo: "/api/csp-report",
+    directives: {
+      "connect-src": ["https://*.uploadthing.com", "https://utfs.io", "https://*.ufs.sh"],
+      "img-src": ["data:", "blob:", "https://utfs.io", "https://*.ufs.sh"],
+      "object-src": ["none"],
+      "frame-ancestors": ["none"],
+      "report-uri": ["/api/csp-report"],
+    },
+  },
 });
 
+function removeUnsafeInlineScripts(value: string) {
+  return value.split(";").map((directive) => {
+    const trimmed = directive.trim();
+    return trimmed.startsWith("script-src ")
+      ? trimmed.split(/\s+/).filter((token) => token !== "'unsafe-inline'").join(" ")
+      : trimmed;
+  }).filter(Boolean).join("; ");
+}
+
+function enforceStrictScriptPolicy(response: Response) {
+  for (const name of ["content-security-policy", "x-middleware-request-content-security-policy"]) {
+    const policy = response.headers.get(name);
+    if (policy) response.headers.set(name, removeUnsafeInlineScripts(policy));
+  }
+  return response;
+}
+
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
-  if (isE2ETestMode()) return NextResponse.next();
-  return clerkProxy(request, event);
+  if (isE2ETestMode() || isHealthCheck(request)) return NextResponse.next();
+  const response = await clerkProxy(request, event);
+  return response ? enforceStrictScriptPolicy(response) : response;
 }
 
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    "/__clerk(.*)",
   ],
 };

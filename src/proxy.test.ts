@@ -5,11 +5,14 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(async () => ({ userId: null as string | null })),
   consume: vi.fn(),
   clerk: vi.fn(),
+  cspOptions: undefined as unknown,
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({
-  clerkMiddleware: (callback: (auth: typeof mocks.auth, request: unknown) => unknown) =>
-    (request: unknown, event: unknown) => mocks.clerk(callback, request, event),
+  clerkMiddleware: (callback: (auth: typeof mocks.auth, request: unknown) => unknown, options: unknown) => {
+    mocks.cspOptions = options;
+    return (request: unknown, event: unknown) => mocks.clerk(callback, request, event);
+  },
 }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => {
@@ -78,7 +81,10 @@ describe("request proxy", () => {
     await proxy(request("/", { method: "POST", ip: "203.0.113.4" }), {} as never);
     await proxy(request("/rate-limited", { ip: "203.0.113.4" }), {} as never);
     await proxy(request("/"), {} as never);
+    await proxy(request("/healthz", { ip: "203.0.113.4" }), {} as never);
+    await proxy(request("/readyz", { ip: "203.0.113.4" }), {} as never);
     expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.clerk).toHaveBeenCalledTimes(3);
   });
 
   it("rewrites denied reads with 429 retry metadata", async () => {
@@ -92,7 +98,37 @@ describe("request proxy", () => {
   });
 
   it("matches application and API routes", () => {
-    expect(config.matcher).toHaveLength(2);
+    expect(config.matcher).toHaveLength(3);
     expect(config.matcher[1]).toBe("/(api|trpc)(.*)");
+    expect(config.matcher[2]).toBe("/__clerk(.*)");
+  });
+
+  it("configures Clerk's enforced strict CSP for Clerk and UploadThing", () => {
+    expect(mocks.cspOptions).toEqual({
+      contentSecurityPolicy: expect.objectContaining({
+        strict: true,
+        reportTo: "/api/csp-report",
+        directives: expect.objectContaining({
+          "connect-src": expect.arrayContaining(["https://*.uploadthing.com", "https://*.ufs.sh"]),
+          "object-src": ["none"],
+          "frame-ancestors": ["none"],
+        }),
+      }),
+    });
+  });
+
+  it("removes script unsafe-inline while retaining nonced strict-dynamic policies", async () => {
+    mocks.clerk.mockResolvedValueOnce(new Response(null, { headers: {
+      "content-security-policy": "script-src 'self' 'unsafe-inline' 'nonce-one' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.uploadthing.com",
+      "x-middleware-request-content-security-policy": "script-src 'self' 'unsafe-inline' 'nonce-one' 'strict-dynamic'; style-src 'self' 'unsafe-inline'",
+    } }));
+    const response = await proxy(request("/", { ip: "203.0.113.4" }), {} as never);
+    if (!response) throw new Error("Expected a proxy response");
+    const policy = response.headers.get("content-security-policy")!;
+    expect(policy).toContain("'nonce-one'");
+    expect(policy).toContain("'strict-dynamic'");
+    expect(policy.match(/script-src[^;]*/)?.[0]).not.toContain("'unsafe-inline'");
+    expect(policy.match(/style-src[^;]*/)?.[0]).toContain("'unsafe-inline'");
+    expect(response.headers.get("x-middleware-request-content-security-policy")?.match(/script-src[^;]*/)?.[0]).not.toContain("'unsafe-inline'");
   });
 });

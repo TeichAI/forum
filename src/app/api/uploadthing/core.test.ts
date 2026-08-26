@@ -1,60 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+type RegisteredRoute = {
+  config: unknown;
+  middleware?: () => Promise<unknown>;
+  complete?: (input: unknown) => Promise<unknown>;
+};
+
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   createAttachment: vi.fn(),
-  middleware: undefined as undefined | (() => Promise<unknown>),
-  complete: undefined as undefined | ((input: unknown) => Promise<unknown>),
-  consumeUserMutation: vi.fn(),
+  routes: [] as RegisteredRoute[],
 }));
 
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/db", () => ({ db: { attachment: { create: mocks.createAttachment } } }));
-vi.mock("@/lib/rate-limit", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
-  return { ...actual, consumeUserMutation: mocks.consumeUserMutation };
-});
 vi.mock("uploadthing/next", () => ({
-  createUploadthing: () => () => ({
-    middleware(callback: () => Promise<unknown>) { mocks.middleware = callback; return this; },
-    onUploadComplete(callback: (input: unknown) => Promise<unknown>) { mocks.complete = callback; return this; },
-  }),
+  createUploadthing: () => (config: unknown) => {
+    const route: RegisteredRoute = { config };
+    mocks.routes.push(route);
+    const builder = {
+      middleware(callback: () => Promise<unknown>) { route.middleware = callback; return builder; },
+      onUploadComplete(callback: (input: unknown) => Promise<unknown>) { route.complete = callback; return builder; },
+    };
+    return builder;
+  },
 }));
 
 describe("UploadThing router contract", () => {
   beforeEach(async () => {
     vi.resetModules();
+    mocks.routes.length = 0;
     mocks.requireUser.mockReset();
     mocks.createAttachment.mockReset();
-    mocks.consumeUserMutation.mockReset();
-    mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
     await import("./core");
   });
 
-  it("authenticates an upload and passes only the local user id", async () => {
-    mocks.requireUser.mockResolvedValue({ id: "local-user", clerkId: "user-1", role: "MEMBER" });
-    await expect(mocks.middleware!()).resolves.toEqual({ userId: "local-user" });
+  it("sets explicit public and private ACLs", () => {
+    expect(mocks.routes).toHaveLength(2);
+    expect(mocks.routes[0]?.config).toEqual({ image: expect.objectContaining({ acl: "public-read" }) });
+    expect(mocks.routes[1]?.config).toEqual({ image: expect.objectContaining({ acl: "private" }) });
   });
 
-  it("rejects a limited upload before returning upload metadata", async () => {
+  it("authenticates each upload and passes only the local user id", async () => {
     mocks.requireUser.mockResolvedValue({ id: "local-user", clerkId: "user-1", role: "MEMBER" });
-    mocks.consumeUserMutation.mockResolvedValue({ allowed: false, retryAfterSeconds: 30, resetAt: new Date().toISOString(), remaining: 0 });
-    await expect(mocks.middleware!()).rejects.toThrow("Try again in 30 seconds");
+    await expect(mocks.routes[0]!.middleware!()).resolves.toEqual({ userId: "local-user" });
+    await expect(mocks.routes[1]!.middleware!()).resolves.toEqual({ userId: "local-user" });
   });
 
   it("rejects a missing user defensively", async () => {
     mocks.requireUser.mockResolvedValue(null);
-    await expect(mocks.middleware!()).rejects.toThrow("Unauthorized");
+    await expect(mocks.routes[0]!.middleware!()).rejects.toThrow("Unauthorized");
   });
 
-  it("records completed files as draft attachments", async () => {
+  it("records public uploads with their provider URL", async () => {
     mocks.createAttachment.mockResolvedValue({ id: "attachment", url: "https://app.ufs.sh/f/key" });
-    await expect(mocks.complete!({
+    await expect(mocks.routes[0]!.complete!({
       metadata: { userId: "local-user" },
       file: { key: "key", ufsUrl: "https://app.ufs.sh/f/key", name: "image.png", size: 42 },
     })).resolves.toEqual({ id: "attachment", url: "https://app.ufs.sh/f/key" });
-    expect(mocks.createAttachment).toHaveBeenCalledWith({ data: {
-      userId: "local-user", key: "key", url: "https://app.ufs.sh/f/key", name: "image.png", size: 42, context: "DRAFT",
-    } });
+    expect(mocks.createAttachment).toHaveBeenCalledWith({ data: expect.objectContaining({ access: "PUBLIC", context: "DRAFT" }) });
+  });
+
+  it("records private uploads without exposing their provider URL", async () => {
+    mocks.createAttachment.mockResolvedValue({ id: "private-attachment", url: "https://secret.ufs.sh/f/key" });
+    const result = await mocks.routes[1]!.complete!({
+      metadata: { userId: "local-user" },
+      file: { key: "key", ufsUrl: "https://secret.ufs.sh/f/key", name: "image.png", size: 42 },
+    });
+    expect(result).toEqual({ id: "private-attachment", url: "/api/attachments/private-attachment" });
+    expect(JSON.stringify(result)).not.toContain("secret.ufs.sh");
+    expect(mocks.createAttachment).toHaveBeenCalledWith({ data: expect.objectContaining({ access: "PRIVATE", url: "https://secret.ufs.sh/f/key" }) });
   });
 });

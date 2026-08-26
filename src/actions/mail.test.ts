@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => {
     mailParticipant: { findUnique: fn(), update: fn() }, mailThread: { create: fn(), update: fn() }, mailEntry: { create: fn() },
     attachment: { updateMany: fn() }, $transaction: fn(),
   };
-  return { db, requireUser: fn(), consumeRateLimit: fn(), consumeUserMutation: fn(), claimAttachments: fn(), revalidatePath: fn(), redirect: fn() };
+  return { db, requireUser: fn(), consumeRateLimit: fn(), consumeMutationRateLimit: fn(), consumeUserMutation: fn(), claimAttachments: fn(), revalidatePath: fn(), redirect: fn() };
 });
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("@/lib/attachments", () => ({ claimAttachments: mocks.claimAttachments }));
-vi.mock("@/lib/rate-limit", async (original) => ({ ...(await original<typeof import("@/lib/rate-limit")>()), consumeRateLimit: mocks.consumeRateLimit, consumeUserMutation: mocks.consumeUserMutation }));
+vi.mock("@/lib/rate-limit", async (original) => ({ ...(await original<typeof import("@/lib/rate-limit")>()), consumeRateLimit: mocks.consumeRateLimit, consumeMutationRateLimit: mocks.consumeMutationRateLimit, consumeUserMutation: mocks.consumeUserMutation }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(user);
   mocks.consumeRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
+  mocks.consumeMutationRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
   mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
   mocks.db.user.findMany.mockResolvedValue([other]);
   mocks.db.block.findFirst.mockResolvedValue(null);
@@ -97,7 +98,7 @@ describe("Mail server actions", () => {
   });
 
   it("returns rate limits and missing-draft errors before sending", async () => {
-    mocks.consumeRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 4, resetAt: "later", remaining: 0 });
+    mocks.consumeMutationRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 4, resetAt: "later", remaining: 0 });
     await expect(sendMail(form({ recipientId: ids.other, subject: "Subject", body: "Body" }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
     mocks.db.mailDraft.findFirst.mockResolvedValue(null);
     await expect(sendMail(form({ draftId: ids.draft, recipientId: ids.other, subject: "Subject", body: "Body" }))).resolves.toEqual(expect.objectContaining({ status: "error", message: expect.stringContaining("draft") }));

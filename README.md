@@ -23,7 +23,7 @@ Clerk user public metadata is the source of truth for global forum roles. In the
 
 Assign roles from a user’s public metadata in the Clerk Dashboard. Use `{"role":"admin"}` for an administrator or `{"role":"moderator"}` for a moderator. `{"role":"member"}` and an absent role both produce an ordinary member. Unknown or malformed values also fall back to member access.
 
-The signed `forum_role` session claim authorizes the current user. The Prisma `User.role` field is only a denormalized cache used for public badges and bulk forum queries. Role assignments cannot be changed from the forum UI. Clerk refreshes session claims approximately every 60 seconds, so a Dashboard role change can take up to a minute to affect an existing session. See Clerk’s [global RBAC guide](https://clerk.com/docs/guides/secure/basic-rbac) and [session-token guidance](https://clerk.com/docs/guides/sessions/customize-session-tokens).
+The signed `forum_role` session claim authorizes ordinary member behavior. Moderator and administrator entry points additionally fetch the current Clerk public metadata and deny access if that verification fails, so a staff downgrade takes effect immediately. The Prisma `User.role` field is only a denormalized cache used for public badges and bulk forum queries. Role assignments cannot be changed from the forum UI. See Clerk’s [global RBAC guide](https://clerk.com/docs/guides/secure/basic-rbac) and [session-token guidance](https://clerk.com/docs/guides/sessions/customize-session-tokens).
 
 ## Clerk access modes
 
@@ -37,15 +37,13 @@ This public setting is compiled into the browser bundle. Change the Access mode 
 
 For Docker Compose, export the mode before building when it is not `public`, for example `NEXT_PUBLIC_CLERK_ACCESS_MODE=waitlist docker compose --env-file .env.local up --build`.
 
-## Docker Compose
+## Docker and deployment
 
-1. Copy `.env.example` to `.env.local` and add your Clerk credentials. `UPLOADTHING_TOKEN` remains optional. The Compose network supplies its own `DATABASE_URL`, so the value in `.env.local` is ignored by the running container.
-2. Run `docker compose --env-file .env.local up --build`.
-3. Open [http://localhost:3000](http://localhost:3000).
+Use `docker compose --env-file .env.local up database` when local development needs only PostgreSQL, then run the application with `npm run dev`. A production image intentionally starts only `node server.js`; it never applies migrations from its startup command.
 
-The forum waits for PostgreSQL to be healthy and applies committed Prisma migrations before it starts. A fresh database has no spaces; sign in as a configured administrator and create the first one from the Spaces panel on the home page. Database data is kept in a named volume across restarts. Run `docker compose --env-file .env.local down` to stop the stack, or `docker compose --env-file .env.local down --volumes` to also reset its database.
+Configure Railway’s pre-deploy command as `prisma migrate deploy` with the privileged migration credential mapped to `DATABASE_URL`. The running service should receive the restricted application credential instead. The Prisma CLI and committed migration files remain in the runner image for that pre-deploy command. Refresh the pinned Node Alpine multi-architecture digest whenever dependencies are updated.
 
-Set `FORUM_PORT` or `POSTGRES_PORT` in your shell to change the exposed ports. To use a different environment file for both build arguments and the running container, set `FORUM_ENV_FILE` and pass the same path to `--env-file`, for example `FORUM_ENV_FILE=.env.staging docker compose --env-file .env.staging up --build`.
+Production startup requires a PostgreSQL URL, an HTTPS `NEXT_PUBLIC_APP_URL`, live Clerk publishable and secret keys, `CLERK_WEBHOOK_SECRET`, an explicit Clerk access mode, and a 32-character `RATE_LIMIT_HASH_SECRET`. If `UPLOADTHING_TOKEN` is present, a distinct 32-character `CRON_SECRET` is also required. Startup errors name invalid variables without printing their values.
 
 ## Clerk webhook synchronization
 
@@ -55,15 +53,17 @@ When `CLERK_WEBHOOK_SECRET` is blank or absent, the webhook endpoint is disabled
 
 ## Optional image uploads
 
-Set `UPLOADTHING_TOKEN` to enable the image upload button and `/api/uploadthing`. If the token is absent or blank, the forum remains fully usable, new uploads are rejected, and existing UploadThing-hosted images are hidden without deleting their Markdown or attachment records. Externally hosted Markdown images continue to render.
+Set `UPLOADTHING_TOKEN` to enable the image upload button and `/api/uploadthing`. Forum images use public-read storage, while Mail images use private storage and are served only through short-lived authorized redirects. Configure `CRON_SECRET` for stale-upload maintenance. If uploads are disabled, the forum remains usable and new uploads return `503`.
 
 ## Application rate limits
 
 The forum uses shared PostgreSQL token buckets for page reads and state-changing actions. Signed-in traffic is keyed by a one-way hash of the Clerk user ID; anonymous reads use a one-way hash of Railway's `X-Real-IP` header. Raw IP addresses are never persisted or logged.
 
-Set `RATE_LIMIT_HASH_SECRET` to a random value of at least 32 characters in every production environment. Keep the same value across all Railway replicas. `RATE_LIMITING_ENABLED=false` is an emergency fail-open kill switch; normal deployments should leave rate limiting enabled. Limiter storage failures also fail open and emit sanitized structured logs so a limiter incident does not take the forum offline.
+Set `RATE_LIMIT_HASH_SECRET` to a random value of at least 32 characters in every production environment. Keep the same value across all Railway replicas. `RATE_LIMITING_ENABLED=false` is an emergency kill switch; normal deployments should leave rate limiting enabled. Limiter storage failures fail open for ordinary reads, but state-changing requests fail closed for 30 seconds and emit sanitized structured logs.
 
 The checked-in policy favors comfortable bursts and continuously refills capacity rather than imposing fixed-window or daily quotas. Railway edge or host-level protections should still be enabled for malformed requests and volumetric attacks before they reach Next.js.
+
+Use `/healthz` for process liveness and `/readyz` when database readiness is required. Both endpoints are unauthenticated, uncached, exempt from application read limits, and return no internal error details.
 
 ## Testing
 

@@ -59,7 +59,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   );
   if (isE2ETestMode()) return content;
   return (
-    <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" waitlistUrl="/waitlist" signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
+    <ClerkProvider dynamic signInUrl="/sign-in" signUpUrl="/sign-up" waitlistUrl="/waitlist" signInFallbackRedirectUrl="/" signUpFallbackRedirectUrl="/">
       {content}
     </ClerkProvider>
   );

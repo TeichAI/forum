@@ -78,12 +78,14 @@ export async function requireUser() {
 
 export async function requireModerator() {
   const user = await requireUser();
-  if (user.role !== "MODERATOR" && user.role !== "ADMIN") redirect("/");
-  return user;
+  const role = await getVerifiedUserRole(user);
+  if (role !== "MODERATOR" && role !== "ADMIN") redirect("/");
+  return { ...user, role };
 }
 
 export async function requireAdmin() {
   const user = await requireUser();
-  if (user.role !== "ADMIN") redirect("/");
-  return user;
+  const role = await getVerifiedUserRole(user);
+  if (role !== "ADMIN") redirect("/");
+  return { ...user, role };
 }

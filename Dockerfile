@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS base
+# Refresh this multi-architecture digest during dependency update work.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS base
 
 RUN apk add --no-cache openssl
 
@@ -57,4 +58,4 @@ USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "prisma migrate deploy && exec node server.js"]
+CMD ["node", "server.js"]

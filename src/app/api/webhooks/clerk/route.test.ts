@@ -71,6 +71,23 @@ describe("Clerk webhook route", () => {
     expect(updateManyMock).not.toHaveBeenCalled();
   });
 
+  it("rejects webhook bodies larger than 1 MiB", async () => {
+    vi.stubEnv("CLERK_WEBHOOK_SECRET", "whsec_dGVzdC1zZWNyZXQ=");
+    headersMock.mockResolvedValue(new Headers({
+      "svix-id": "msg_large",
+      "svix-timestamp": String(Math.floor(Date.now() / 1000)),
+      "svix-signature": "v1,invalid",
+    }));
+    const { POST } = await import("./route");
+    const response = await POST(new Request("http://localhost/api/webhooks/clerk", {
+      method: "POST",
+      headers: { "content-length": String(1024 * 1024 + 1) },
+      body: "{}",
+    }));
+    expect(response.status).toBe(413);
+    expect(updateManyMock).not.toHaveBeenCalled();
+  });
+
   it("processes a valid signed event when enabled", async () => {
     const secret = "whsec_dGVzdC1zZWNyZXQ=";
     const messageId = "msg_valid";

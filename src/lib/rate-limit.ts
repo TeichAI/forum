@@ -19,18 +19,28 @@ export type RateLimitSubject = {
 };
 
 export type RateLimitResult = {
+  outcome: "allowed" | "limit_exceeded" | "storage_unavailable";
   allowed: boolean;
   retryAfterSeconds: number;
   resetAt: string;
   remaining: number;
 };
 
-export type RateLimitedActionState = {
-  status: "rate_limited";
-  message: string;
-  retryAfterSeconds: number;
-  resetAt: string;
-};
+export type RateLimitedActionState =
+  | {
+    status: "rate_limited";
+    message: string;
+    retryAfterSeconds: number;
+    resetAt: string;
+    fieldErrors?: undefined;
+  }
+  | {
+    status: "error";
+    message: string;
+    retryAfterSeconds?: undefined;
+    resetAt?: undefined;
+    fieldErrors?: undefined;
+  };
 
 export const RATE_LIMIT_POLICIES = {
   readUser: { scope: "read:user", capacity: 240, refillPerSecond: 2 },
@@ -89,6 +99,12 @@ function actionResetAt(retryAfterSeconds: number) {
 }
 
 export function rateLimitedActionState(result: RateLimitResult): RateLimitedActionState {
+  if (result.outcome === "storage_unavailable") {
+    return {
+      status: "error",
+      message: "We couldn’t complete a temporary security check. Please try again in 30 seconds.",
+    };
+  }
   const duration = result.retryAfterSeconds === 1 ? "1 second" : `${result.retryAfterSeconds} seconds`;
   return {
     status: "rate_limited",
@@ -122,9 +138,10 @@ export function mailSendPolicies(user: { role: string }, recipientCount: number)
 export async function consumeRateLimit(
   subjectInput: RateLimitSubject,
   policies: RateLimitPolicy[],
+  options: { storageFailure: "allow" | "deny" } = { storageFailure: "allow" },
 ): Promise<RateLimitResult> {
   if (!rateLimitingEnabled() || policies.length === 0) {
-    return { allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
+    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
   }
 
   const subject = rateLimitSubject(subjectInput);
@@ -196,7 +213,7 @@ export async function consumeRateLimit(
         console.error(JSON.stringify({ event: "rate_limit.cleanup_failed", error: error instanceof Error ? error.name : "UnknownError" }));
       });
     }
-    return { ...result, resetAt };
+    return { ...result, outcome: result.allowed ? "allowed" : "limit_exceeded", resetAt };
   } catch (error) {
     if (error instanceof RateLimitConfigurationError) throw error;
     console.error(JSON.stringify({
@@ -205,8 +222,15 @@ export async function consumeRateLimit(
       scopes: ordered.map((policy) => policy.scope),
       error: error instanceof Error ? error.name : "UnknownError",
     }));
-    return { allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
+    if (options.storageFailure === "deny") {
+      return { outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: actionResetAt(30), remaining: 0 };
+    }
+    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
   }
+}
+
+export function consumeMutationRateLimit(subjectInput: RateLimitSubject, policies: RateLimitPolicy[]) {
+  return consumeRateLimit(subjectInput, policies, { storageFailure: "deny" });
 }
 
 export async function consumeUserMutation(
@@ -214,5 +238,5 @@ export async function consumeUserMutation(
   policy?: RateLimitPolicy,
   additional: RateLimitPolicy[] = [],
 ) {
-  return consumeRateLimit({ kind: "user", value: user.clerkId }, memberMutationPolicies(user, policy, additional));
+  return consumeMutationRateLimit({ kind: "user", value: user.clerkId }, memberMutationPolicies(user, policy, additional));
 }

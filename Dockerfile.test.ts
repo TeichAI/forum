@@ -83,30 +83,26 @@ describe("production Dockerfile", () => {
     expect(runnerStage).toContain("COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma");
   });
 
-  it("deploys migrations before starting the standalone server", () => {
+  it("starts only the standalone server and leaves migrations to pre-deploy", () => {
     const commandMatch = runnerStage.match(/^CMD\s+(\[.*\])$/m);
 
     expect(commandMatch).not.toBeNull();
     const command = JSON.parse(commandMatch![1]) as string[];
-    expect(command).toEqual([
-      "sh",
-      "-c",
-      "prisma migrate deploy && exec node server.js",
-    ]);
-
-    const startupScript = command[2];
-    expect(startupScript.indexOf("prisma migrate deploy")).toBeLessThan(
-      startupScript.indexOf("node server.js"),
-    );
-    expect(startupScript).toContain("migrate deploy && exec node server.js");
+    expect(command).toEqual(["node", "server.js"]);
+    expect(runnerStage).not.toContain("prisma migrate deploy");
   });
 
-  it("runs migrations and the application as the non-root nextjs user", () => {
+  it("runs the application as the non-root nextjs user", () => {
     const userDirective = runnerStage.indexOf("USER nextjs");
     const commandDirective = runnerStage.indexOf("CMD ");
 
     expect(userDirective).toBeGreaterThanOrEqual(0);
     expect(commandDirective).toBeGreaterThan(userDirective);
     expect(runnerStage.slice(userDirective, commandDirective)).not.toMatch(/^USER\s+root$/m);
+  });
+
+  it("pins the multi-architecture Node Alpine image and documents refreshes", () => {
+    expect(dockerfile).toMatch(/^FROM node:22-alpine@sha256:[a-f0-9]{64} AS base$/m);
+    expect(dockerfile).toContain("Refresh this multi-architecture digest during dependency update work.");
   });
 });

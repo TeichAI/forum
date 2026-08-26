@@ -209,7 +209,17 @@ describe("viewer authorization", () => {
   ] as const)("allows a %s session claim to moderate despite a member cache", async (claim, expected) => {
     authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: claim } });
     findUniqueMock.mockResolvedValue({ id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: "MEMBER" });
+    getUserMock.mockResolvedValue({ publicMetadata: { role: claim } });
     await expect(requireModerator()).resolves.toEqual(expect.objectContaining({ role: expected }));
+  });
+
+  it("denies staff immediately after a provider downgrade or verification failure", async () => {
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: "admin" } });
+    findUniqueMock.mockResolvedValue({ id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: "ADMIN" });
+    getUserMock.mockResolvedValueOnce({ publicMetadata: { role: "member" } });
+    await expect(requireModerator()).rejects.toThrow("redirect:/");
+    getUserMock.mockRejectedValueOnce(new Error("provider unavailable"));
+    await expect(requireAdmin()).rejects.toThrow("redirect:/");
   });
 
   it("revokes stale cached staff authority when the session claim is missing", async () => {

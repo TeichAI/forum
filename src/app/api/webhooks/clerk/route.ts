@@ -5,6 +5,9 @@ import { db } from "@/lib/db";
 import { normalizeClerkRole } from "@/lib/roles";
 import { provisionClerkUser } from "@/lib/user-provisioning";
 import { optionalRuntimeSecret } from "@/lib/env";
+import { BodyTooLargeError, readBoundedBody } from "@/lib/bounded-body";
+
+const MAX_WEBHOOK_BYTES = 1024 * 1024;
 
 export async function POST(request: Request) {
   const secret = optionalRuntimeSecret("CLERK_WEBHOOK_SECRET");
@@ -17,12 +20,14 @@ export async function POST(request: Request) {
 
   let event: WebhookEvent;
   try {
-    event = new Webhook(secret).verify(await request.text(), {
+    const body = await readBoundedBody(request, MAX_WEBHOOK_BYTES);
+    event = new Webhook(secret).verify(body, {
       "svix-id": svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
     }) as WebhookEvent;
-  } catch {
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return Response.json({ error: "Payload too large" }, { status: 413 });
     return Response.json({ error: "Invalid signature" }, { status: 400 });
   }
 

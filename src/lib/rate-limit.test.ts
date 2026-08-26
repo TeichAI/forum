@@ -18,6 +18,7 @@ vi.mock("@/lib/db", () => ({ db: mocks.db }));
 
 import {
   RATE_LIMIT_POLICIES,
+  consumeMutationRateLimit,
   consumeRateLimit,
   mailSendPolicies,
   mailThreadPolicy,
@@ -125,9 +126,22 @@ describe("consumeRateLimit", () => {
     mocks.db.$transaction.mockRejectedValueOnce(new Error("postgresql://secret-host/database"));
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const result = await consumeRateLimit({ kind: "ip", value: "203.0.113.4" }, [RATE_LIMIT_POLICIES.readAnonymous]);
-    expect(result.allowed).toBe(true);
+    expect(result).toEqual(expect.objectContaining({ outcome: "allowed", allowed: true }));
     expect(log).toHaveBeenCalledWith(expect.not.stringContaining("secret-host"));
     expect(log).toHaveBeenCalledWith(expect.not.stringContaining("203.0.113.4"));
+  });
+
+  it("fails mutations closed for 30 seconds with a distinct storage outcome", async () => {
+    mocks.db.$transaction.mockRejectedValueOnce(new Error("postgresql://private-host/database"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const result = await consumeMutationRateLimit({ kind: "user", value: "user_1" }, [RATE_LIMIT_POLICIES.thread]);
+    expect(result).toEqual(expect.objectContaining({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, remaining: 0 }));
+    expect(rateLimitedActionState(result)).toEqual({
+      status: "error",
+      message: "We couldn’t complete a temporary security check. Please try again in 30 seconds.",
+    });
+    expect(log).toHaveBeenCalledWith(expect.not.stringContaining("private-host"));
+    expect(log).toHaveBeenCalledWith(expect.not.stringContaining("user_1"));
   });
 
   it("fails open when storage rejects with a non-Error value", async () => {
@@ -206,7 +220,7 @@ describe("consumeRateLimit", () => {
   });
 
   it("uses natural singular countdown copy", () => {
-    expect(rateLimitedActionState({ allowed: false, retryAfterSeconds: 1, resetAt: now.toISOString(), remaining: 0 }).message).toContain("1 second.");
+    expect(rateLimitedActionState({ outcome: "limit_exceeded", allowed: false, retryAfterSeconds: 1, resetAt: now.toISOString(), remaining: 0 }).message).toContain("1 second.");
   });
 });
 
