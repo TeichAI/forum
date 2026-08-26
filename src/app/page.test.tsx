@@ -44,7 +44,7 @@ describe("home page", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: /Ideas grow better/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start a discussion/ })).toBeInTheDocument();
-    expect(screen.getByText("1,234 community members")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "1,234 community members" })).toHaveAttribute("href", "/members");
     expect(screen.queryByText(/Welcome back/)).not.toBeInTheDocument();
     expect(mocks.countUsers).toHaveBeenCalledWith({ where: { status: "ACTIVE" } });
   });

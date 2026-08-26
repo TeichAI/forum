@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findMany = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/db", () => ({ db: { thread: { findMany } } }));
+const findUsers = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/db", () => ({ db: { thread: { findMany }, user: { findMany: findUsers } } }));
 
-import { canModerate, decodeCursor, encodeCursor, listThreads, listThreadsPage, searchThreads, threadListInclude } from "./queries";
+import { canModerate, decodeCursor, encodeCursor, listMembersPage, listThreads, listThreadsPage, memberListSelect, searchThreads, threadListInclude } from "./queries";
 
-beforeEach(() => findMany.mockReset().mockResolvedValue([]));
+beforeEach(() => {
+  findMany.mockReset().mockResolvedValue([]);
+  findUsers.mockReset().mockResolvedValue([]);
+});
 
 describe("thread queries", () => {
   it.each([
@@ -88,6 +92,48 @@ describe("thread queries", () => {
     expect(decodeCursor(undefined)).toBeNull();
     expect(decodeCursor(encodeCursor("value" as unknown as object))).toBeNull();
     expect(decodeCursor("not-json")).toBeNull();
+  });
+});
+
+describe("member queries", () => {
+  it("lists only active members and searches public profile fields", async () => {
+    await listMembersPage(`  ${"x".repeat(100)}  `, undefined, 12, "MODERATOR");
+    const call = findUsers.mock.calls[0][0];
+    expect(call.where.status).toBe("ACTIVE");
+    expect(call.where.role).toBe("MODERATOR");
+    expect(call.where.AND[0].OR).toEqual([
+      { displayName: { contains: "x".repeat(80), mode: "insensitive" } },
+      { username: { contains: "x".repeat(80), mode: "insensitive" } },
+    ]);
+    expect(call.where.AND[1]).toEqual({});
+    expect(call.select).toBe(memberListSelect);
+    expect(call.orderBy).toEqual([{ displayName: "asc" }, { id: "asc" }]);
+    expect(call.take).toBe(13);
+  });
+
+  it("returns a stable alphabetical cursor and applies it to the next page", async () => {
+    findUsers.mockResolvedValue([
+      { id: "ada", displayName: "Ada" },
+      { id: "grace", displayName: "Grace" },
+    ]);
+    const page = await listMembersPage("", undefined, 1);
+    expect(page.items).toEqual([{ id: "ada", displayName: "Ada" }]);
+    expect(decodeCursor<{ displayName: string; id: string }>(page.nextCursor ?? "")).toEqual({ displayName: "Ada", id: "ada" });
+
+    findUsers.mockResolvedValue([]);
+    await listMembersPage("", page.nextCursor ?? undefined, 1);
+    expect(findUsers.mock.calls[1][0].where.AND[1]).toEqual({
+      OR: [
+        { displayName: { gt: "Ada" } },
+        { displayName: "Ada", id: { gt: "ada" } },
+      ],
+    });
+  });
+
+  it("ignores malformed cursors and clamps page size", async () => {
+    await listMembersPage("", encodeCursor({ displayName: "", id: "missing" }), 100);
+    expect(findUsers.mock.calls[0][0].where.AND).toEqual([{}, {}]);
+    expect(findUsers.mock.calls[0][0].take).toBe(51);
   });
 });
 

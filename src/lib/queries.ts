@@ -1,6 +1,6 @@
 import "server-only";
-import { Prisma, type User } from "@prisma/client";
-import { publicThreadWhere } from "@/lib/access";
+import { Prisma, type User, type UserRole } from "@prisma/client";
+import { activeMemberWhere, publicThreadWhere } from "@/lib/access";
 import { db } from "@/lib/db";
 
 export const threadListInclude = {
@@ -87,6 +87,67 @@ export async function listThreads(options: {
 }
 
 type ActivityCursor = { time: string; id: string };
+
+type MemberCursor = { displayName: string; id: string };
+
+export const memberListSelect = {
+  id: true,
+  username: true,
+  displayName: true,
+  bio: true,
+  imageUrl: true,
+  role: true,
+  createdAt: true,
+  _count: {
+    select: {
+      threads: { where: publicThreadWhere },
+      replies: {
+        where: {
+          status: "PUBLISHED",
+          thread: publicThreadWhere,
+        },
+      },
+    },
+  },
+} satisfies Prisma.UserSelect;
+
+export async function listMembersPage(query = "", cursorValue?: string, requestedTake = 24, role?: UserRole) {
+  const q = query.trim().slice(0, 80);
+  const take = Math.min(Math.max(requestedTake, 1), 50);
+  const cursor = decodeCursor<MemberCursor>(cursorValue);
+  const hasCursor = Boolean(cursor?.displayName && cursor.id);
+  const items = await db.user.findMany({
+    where: {
+      ...activeMemberWhere,
+      role,
+      AND: [
+        q ? {
+          OR: [
+            { displayName: { contains: q, mode: "insensitive" } },
+            { username: { contains: q, mode: "insensitive" } },
+          ],
+        } : {},
+        hasCursor ? {
+          OR: [
+            { displayName: { gt: cursor!.displayName } },
+            { displayName: cursor!.displayName, id: { gt: cursor!.id } },
+          ],
+        } : {},
+      ],
+    },
+    select: memberListSelect,
+    orderBy: [{ displayName: "asc" }, { id: "asc" }],
+    take: take + 1,
+  });
+  const visible = items.slice(0, take);
+  const last = visible.at(-1);
+  return {
+    items: visible,
+    nextCursor: items.length > take && last
+      ? encodeCursor({ displayName: last.displayName, id: last.id })
+      : null,
+  };
+}
 
 export async function searchThreadsPage(query: string, cursorValue?: string, requestedTake = 25) {
   const q = query.trim().slice(0, 100);

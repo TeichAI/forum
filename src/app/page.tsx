@@ -37,7 +37,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
             <p className="mt-4 max-w-xl text-base leading-7 muted sm:text-lg">Ask questions, share experiments, meet other builders, and help shape the future of Teich.</p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <NewThreadTrigger className="button button-primary button-lg">Start a discussion <ArrowRight size={16} aria-hidden /></NewThreadTrigger>
-              <span className="flex items-center gap-2 text-sm font-semibold muted"><Users size={17} aria-hidden /> {memberCount?.toLocaleString()} community members</span>
+              <Link href="/members" className="flex items-center gap-2 text-sm font-semibold muted hover:text-[var(--foreground)]"><Users size={17} aria-hidden /> {memberCount?.toLocaleString()} community members</Link>
             </div>
           </div>
         </section>
