@@ -35,17 +35,17 @@ The custom authentication UI supports Clerk's Open, Invite-only, and Waitlist ac
 
 This public setting is compiled into the browser bundle. Change the Access mode in the Clerk Dashboard and `NEXT_PUBLIC_CLERK_ACCESS_MODE` together, then rebuild the app. Missing configuration defaults to `public`; invalid values stop the app with a configuration error. Waitlist mode also requires email to be enabled in Clerk so approved users can receive their invitations. Invitations and waitlist approvals remain managed in the Clerk Dashboard.
 
-For Docker Compose, export the mode before building when it is not `public`, for example `NEXT_PUBLIC_CLERK_ACCESS_MODE=waitlist docker compose up --build`.
+For Docker Compose, export the mode before building when it is not `public`, for example `NEXT_PUBLIC_CLERK_ACCESS_MODE=waitlist docker compose --env-file .env.local up --build`.
 
 ## Docker Compose
 
 1. Copy `.env.example` to `.env.local` and add your Clerk credentials. `UPLOADTHING_TOKEN` remains optional. The Compose network supplies its own `DATABASE_URL`, so the value in `.env.local` is ignored by the running container.
-2. Run `docker compose up --build`.
+2. Run `docker compose --env-file .env.local up --build`.
 3. Open [http://localhost:3000](http://localhost:3000).
 
-The forum waits for PostgreSQL to be healthy and applies committed Prisma migrations before it starts. A fresh database has no spaces; sign in as a configured administrator and create the first one from the Spaces panel on the home page. Database data is kept in a named volume across restarts. Run `docker compose down` to stop the stack, or `docker compose down --volumes` to also reset its database.
+The forum waits for PostgreSQL to be healthy and applies committed Prisma migrations before it starts. A fresh database has no spaces; sign in as a configured administrator and create the first one from the Spaces panel on the home page. Database data is kept in a named volume across restarts. Run `docker compose --env-file .env.local down` to stop the stack, or `docker compose --env-file .env.local down --volumes` to also reset its database.
 
-Set `FORUM_PORT` or `POSTGRES_PORT` in your shell to change the exposed ports. To use a different environment file, set `FORUM_ENV_FILE` to its path before running Compose.
+Set `FORUM_PORT` or `POSTGRES_PORT` in your shell to change the exposed ports. To use a different environment file for both build arguments and the running container, set `FORUM_ENV_FILE` and pass the same path to `--env-file`, for example `FORUM_ENV_FILE=.env.staging docker compose --env-file .env.staging up --build`.
 
 ## Clerk webhook synchronization
 

@@ -4,17 +4,20 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 const dockerfilePath = join(process.cwd(), "Dockerfile");
 const composePath = join(process.cwd(), "compose.yaml");
+const exampleEnvPath = join(process.cwd(), ".env.example");
 const workflowPath = join(process.cwd(), ".github/workflows/verify.yml");
 
 let dockerfile: string;
 let compose: string;
+let exampleEnv: string;
 let workflow: string;
 let runnerStage: string;
 
 beforeAll(async () => {
-  [dockerfile, compose, workflow] = await Promise.all([
+  [dockerfile, compose, exampleEnv, workflow] = await Promise.all([
     readFile(dockerfilePath, "utf8"),
     readFile(composePath, "utf8"),
+    readFile(exampleEnvPath, "utf8"),
     readFile(workflowPath, "utf8"),
   ]);
 
@@ -24,14 +27,45 @@ beforeAll(async () => {
 });
 
 describe("production Dockerfile", () => {
-  it("makes the application URL and env file available to the Next.js build", () => {
-    expect(compose).toMatch(
-      /args:\s+NEXT_PUBLIC_APP_URL: http:\/\/localhost:\$\{FORUM_PORT:-3000\}\s+NEXT_PUBLIC_CLERK_ACCESS_MODE:/,
+  it("uses only Railway-supported cache mounts and a plain Next.js build command", () => {
+    const mountTypes = [...dockerfile.matchAll(/--mount=([^\s\\]+)/g)].map(
+      ([, options]) =>
+        options
+          .split(",")
+          .find((option) => option.startsWith("type="))
+          ?.slice("type=".length) ?? "bind",
     );
-    expect(compose).toMatch(/secrets:\s+- app_env/);
-    expect(dockerfile).toContain(
-      "RUN --mount=type=secret,id=app_env,target=/app/.env.local npm run build",
+
+    expect(mountTypes.filter((type) => type !== "cache")).toEqual([]);
+    expect(dockerfile).toMatch(/^RUN npm run build$/m);
+  });
+
+  it("forwards public build variables without exposing private runtime secrets", () => {
+    const publicBuildVariables = [...dockerfile.matchAll(/^ARG (NEXT_PUBLIC_[A-Z0-9_]+)/gm)]
+      .map(([, variable]) => variable)
+      .sort();
+    const privateRuntimeVariables = exampleEnv
+      .split("\n")
+      .map((line) => line.match(/^([A-Z][A-Z0-9_]*)=/)?.[1])
+      .filter((variable): variable is string => Boolean(variable))
+      .filter((variable) => !variable.startsWith("NEXT_PUBLIC_"));
+    const composeArgsBlock = compose.match(
+      /^ {6}args:\n((?:^ {8}[A-Z][A-Z0-9_]*:.*(?:\n|$))+)/m,
     );
+
+    expect(composeArgsBlock).not.toBeNull();
+    const composeBuildArguments = [...composeArgsBlock![1].matchAll(/^ {8}([A-Z][A-Z0-9_]*):/gm)]
+      .map(([, variable]) => variable)
+      .sort();
+
+    expect(composeBuildArguments).toEqual(publicBuildVariables);
+    for (const variable of publicBuildVariables) {
+      expect(composeArgsBlock![1]).toContain(`${variable}: \${${variable}}`);
+    }
+    for (const variable of privateRuntimeVariables) {
+      expect(composeBuildArguments).not.toContain(variable);
+    }
+    expect(compose).toMatch(/env_file:\s+- \$\{FORUM_ENV_FILE:-\.env\.local\}/);
   });
 
   it("uses the tracked example env when CI starts the test database", () => {

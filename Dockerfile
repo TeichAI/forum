@@ -34,7 +34,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 
 RUN npm run db:generate
-RUN --mount=type=secret,id=app_env,target=/app/.env.local npm run build
+RUN npm run build
 
 
 FROM base AS runner
