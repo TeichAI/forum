@@ -13,7 +13,7 @@ const sections: LegalSection[] = [
     title: "Scope and who is responsible",
     content: <>
       <p>This Privacy Policy explains how TeichAI (<strong>“Teich,” “we,” “us,”</strong> or <strong>“our”</strong>) collects, uses, discloses, and retains personal information when you visit or use Teich Forum, join its waitlist, create an account, communicate with community members, submit a report, or interact with related forum features (collectively, the <strong>“Service”</strong>).</p>
-      <p>TeichAI is responsible for the forum-specific processing described here. Some companies that support the Service also process information under their own terms and privacy notices, particularly Clerk for identity and account management, GitHub if you choose social sign-in, UploadThing if forum image uploads are enabled, and our hosting and infrastructure providers.</p>
+      <p>TeichAI is responsible for the forum-specific processing described here. Some companies that support the Service also process information under their own terms and privacy notices, particularly Clerk for identity and account management, GitHub or Hugging Face if you choose social sign-in, UploadThing if forum image uploads are enabled, and our hosting and infrastructure providers.</p>
       <p>This Policy does not govern third-party websites, repositories, model hosts, datasets, or services linked from forum posts or other TeichAI projects with their own notices. It also does not cover information processed solely in an employment or contractor relationship.</p>
     </>,
   },
@@ -37,7 +37,7 @@ const sections: LegalSection[] = [
         <li><strong>Usage data:</strong> content views, notification state, Mail read and folder state, feature interactions, timestamps, and records needed to deliver requested actions. Discussion view counts may be stored in aggregate with the discussion.</li>
       </ul>
       <h3>Information from others</h3>
-      <p>We receive account and authentication data from Clerk; profile or account data from GitHub when you choose GitHub sign-in; upload metadata from UploadThing; information about you that other users include in posts, Mail, mentions, or reports; and security or diagnostic information from infrastructure providers. The data received from a social provider depends on your settings and the permissions shown during connection.</p>
+      <p>We receive account and authentication data from Clerk; profile or account data from GitHub or Hugging Face when you choose that provider for sign-in; upload metadata from UploadThing; information about you that other users include in posts, Mail, mentions, or reports; and security or diagnostic information from infrastructure providers. The data received from a social provider depends on your settings and the permissions shown during connection.</p>
     </>,
   },
   {
@@ -115,6 +115,7 @@ const sections: LegalSection[] = [
       <ul>
         <li><strong>Clerk</strong> provides account registration, sign-in, sessions, verification, bot protection, profile images, waitlist or invitation workflows, and connected-account management. Clerk may set cookies and process identifiers, credentials, device, security, and account data.</li>
         <li><strong>GitHub</strong> processes information if you choose GitHub social sign-in or visit a linked repository. The permissions screen controls information shared for sign-in.</li>
+        <li><strong>Hugging Face</strong> processes information if you choose Hugging Face social sign-in or visit linked models, datasets, or Spaces. The permissions screen controls information shared for sign-in.</li>
         <li><strong>UploadThing</strong> processes uploaded forum images and related file metadata when uploads are enabled. Images may be delivered from UploadThing-controlled domains.</li>
         <li><strong>Infrastructure providers</strong> host the application, database, network, and related systems and may process request metadata and logs to deliver and secure them.</li>
       </ul>
@@ -199,7 +200,7 @@ const sections: LegalSection[] = [
         <table>
           <thead><tr><th>Category</th><th>Examples</th><th>Sources and purposes</th></tr></thead>
           <tbody>
-            <tr><td>Identifiers</td><td>Email, username, display name, account IDs, IP or hashed rate-limit subject</td><td>You, Clerk, GitHub, devices; account access, community features, security</td></tr>
+            <tr><td>Identifiers</td><td>Email, username, display name, account IDs, IP or hashed rate-limit subject</td><td>You, Clerk, GitHub, Hugging Face, devices; account access, community features, security</td></tr>
             <tr><td>Customer-record information</td><td>Name, account and contact information</td><td>You and identity providers; account administration and support</td></tr>
             <tr><td>Internet or network activity</td><td>Sessions, requests, views, interactions, security and diagnostic events</td><td>Devices and providers; service delivery, measurement, debugging, safety</td></tr>
             <tr><td>General geolocation</td><td>Approximate region inferred from IP by infrastructure providers</td><td>Network requests; security, routing, and legal compliance</td></tr>
@@ -252,7 +253,7 @@ export default function PrivacyPage() {
       highlights={[
         "We do not sell personal information or use it for cross-context behavioral advertising.",
         "Profiles and forum posts can be public; Teich Mail is limited-access but is not end-to-end encrypted.",
-        "Clerk handles authentication, GitHub handles optional social sign-in, and UploadThing handles optional forum image uploads.",
+        "Clerk handles authentication, GitHub and Hugging Face handle optional social sign-in, and UploadThing handles optional forum image uploads.",
         "Deleting an account clears the forum’s stored email, but contributions and safety records may remain for context and integrity.",
       ]}
       sections={sections}

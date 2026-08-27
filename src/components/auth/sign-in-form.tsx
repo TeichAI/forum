@@ -19,14 +19,14 @@ export function SignInForm({ redirectUrl, ssoContinuation = false, accessMode = 
   const resumedSso = useRef(false);
   const [step, setStep] = useState<Step>("password");
   const [continuingSso, setContinuingSso] = useState(ssoContinuation);
-  const [ssoBusy, setSsoBusy] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState<SocialConnection["strategy"] | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [code, setCode] = useState("");
   const [mfaStrategy, setMfaStrategy] = useState<MfaStrategy>("totp");
   const [localError, setLocalError] = useState("");
-  const busy = fetchStatus === "fetching" || ssoBusy;
+  const busy = fetchStatus === "fetching" || ssoBusy !== null;
   const signUpHref = accessMode === "waitlist"
     ? "/waitlist"
     : redirectUrl === "/" ? "/sign-up" : `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
@@ -73,14 +73,14 @@ export function SignInForm({ redirectUrl, ssoContinuation = false, accessMode = 
       } else if (signIn.status === "needs_new_password") {
         setStep("new-password");
       } else {
-        setLocalError("GitHub sign-in could not be resumed. Return to sign in and try again.");
+        setLocalError("Social sign-in could not be resumed. Return to sign in and try again.");
       }
     });
   }, [continuingSso, finish, prepareMfa, signIn.status]);
 
   async function handleSocial(connection: SocialConnection) {
     setLocalError("");
-    setSsoBusy(true);
+    setSsoBusy(connection.strategy);
     const { error } = await signIn.sso({
       strategy: connection.strategy,
       redirectUrl: safeRedirect(redirectUrl),
@@ -88,7 +88,7 @@ export function SignInForm({ redirectUrl, ssoContinuation = false, accessMode = 
     });
     if (error) {
       setLocalError(clerkErrorMessage(error, `We couldn't connect to ${connection.name}.`));
-      setSsoBusy(false);
+      setSsoBusy(null);
     }
   }
 
@@ -196,7 +196,7 @@ export function SignInForm({ redirectUrl, ssoContinuation = false, accessMode = 
 
   return (
     <>
-      {!continuingSso && <SocialConnections busy={busy} onConnect={handleSocial} />}
+      {!continuingSso && <SocialConnections busy={busy} connecting={ssoBusy} onConnect={handleSocial} />}
       <FormAlert>{localError || globalError}</FormAlert>
       <form onSubmit={handlePassword} noValidate>
         <div>

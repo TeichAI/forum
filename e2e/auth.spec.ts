@@ -57,18 +57,21 @@ test.afterAll(async () => {
   await cleanupIdentity(identity);
 });
 
-test("GitHub connection is visible on the initial custom auth forms", async ({ page }) => {
+test("social connections are visible on the initial custom auth forms", async ({ page }) => {
   await page.goto("/sign-up?redirect_url=%2Fsettings");
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Hugging Face" })).toBeVisible();
 
   await page.goto("/sign-in?redirect_url=%2Fsettings");
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Hugging Face" })).toBeVisible();
 });
 
 test("custom signup validates locally, verifies email, and reaches protected settings", async ({ page }) => {
   await page.goto("/sign-up?redirect_url=%2Fsettings");
   await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Hugging Face" })).toBeVisible();
   await expect(page.locator("#clerk-captcha")).toBeAttached();
 
   const firstName = page.getByLabel("First name");
@@ -87,6 +90,7 @@ test("custom signup validates locally, verifies email, and reaches protected set
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your inbox" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue with Hugging Face" })).toHaveCount(0);
   await page.getByLabel("Verification code").fill("424242");
   await page.getByRole("button", { name: "Verify and join" }).click();
   await expect(page).toHaveURL(/\/settings(?:\?|$)/);
@@ -121,6 +125,7 @@ test("custom account center manages identity and displays active sessions", asyn
   await expect(page.getByRole("heading", { name: "Account settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Connected accounts" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Hugging Face" })).toBeVisible();
 
   const avatar = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
   await page.getByLabel(/Choose photo/).setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: avatar });
@@ -143,6 +148,7 @@ test("custom account center manages identity and displays active sessions", asyn
 test("password rejection and success preserve the requested redirect", async ({ page }) => {
   await page.goto("/sign-in?redirect_url=%2Fsettings");
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Hugging Face" })).toBeVisible();
   await page.getByLabel("Email address").fill(replacementEmail);
   await page.getByLabel("Password", { exact: true }).fill("definitely-wrong");
   await page.getByRole("button", { name: "Sign in" }).click();

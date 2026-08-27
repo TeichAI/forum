@@ -124,7 +124,7 @@ describe("SignInForm password flow", () => {
   });
 });
 
-describe("SignInForm GitHub SSO", () => {
+describe("SignInForm social SSO", () => {
   it("starts GitHub SSO with sanitized destinations and accessible social UI", async () => {
     const user = userEvent.setup();
     const hook = createSignInHook();
@@ -137,7 +137,23 @@ describe("SignInForm GitHub SSO", () => {
       redirectUrl: "/messages?thread=1",
       redirectCallbackUrl: "/sso-callback?origin=sign-in&redirect_url=%2Fmessages%3Fthread%3D1",
     });
+    const huggingFaceButton = screen.getByRole("button", { name: "Continue with Hugging Face" });
+    expect(huggingFaceButton.querySelector("img")).toHaveAttribute("src", "/hugging-face-logo.svg");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("starts Hugging Face SSO through Clerk", async () => {
+    const user = userEvent.setup();
+    const hook = createSignInHook();
+    renderForm(hook, "/settings");
+
+    await user.click(screen.getByRole("button", { name: "Continue with Hugging Face" }));
+
+    expect(hook.signIn.sso).toHaveBeenCalledWith({
+      strategy: "oauth_huggingface",
+      redirectUrl: "/settings",
+      redirectCallbackUrl: "/sso-callback?origin=sign-in&redirect_url=%2Fsettings",
+    });
   });
 
   it("surfaces SSO errors and disables all actions while Clerk is fetching", async () => {
@@ -151,7 +167,8 @@ describe("SignInForm GitHub SSO", () => {
     hook.fetchStatus = "fetching";
     state.hook = hook;
     rendered.rerender(<SignInForm redirectUrl="/" />);
-    expect(screen.getByRole("button", { name: "Connecting to GitHub…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue with GitHub" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue with Hugging Face" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
   });
 
@@ -159,12 +176,12 @@ describe("SignInForm GitHub SSO", () => {
     const mfa = createSignInHook({ signIn: { status: "needs_second_factor", supportedSecondFactors: [{ strategy: "totp" }] } });
     const first = renderForm(mfa, "/settings", true);
     expect(await screen.findByRole("heading", { name: "One more step" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub|Hugging Face/ })).not.toBeInTheDocument();
     first.unmount();
 
     renderForm(createSignInHook({ signIn: { status: "needs_new_password" } }), "/settings", true);
     expect(await screen.findByRole("heading", { name: "Choose a new password" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub|Hugging Face/ })).not.toBeInTheDocument();
   });
 
   it("shows a recoverable error for an unsupported callback state", async () => {

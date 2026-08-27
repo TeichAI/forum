@@ -18,7 +18,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   const resumedSso = useRef(false);
   const [verifying, setVerifying] = useState(false);
   const [continuingSso] = useState(ssoContinuation);
-  const [ssoBusy, setSsoBusy] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState<SocialConnection["strategy"] | null>(null);
   const [email, setEmail] = useState(signUp.emailAddress ?? "");
   const [firstName, setFirstName] = useState(signUp.firstName ?? "");
   const [lastName, setLastName] = useState(signUp.lastName ?? "");
@@ -28,7 +28,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   const [code, setCode] = useState("");
   const [localError, setLocalError] = useState("");
   const [blockedMode, setBlockedMode] = useState<"restricted" | "waitlist" | null>(null);
-  const busy = fetchStatus === "fetching" || ssoBusy;
+  const busy = fetchStatus === "fetching" || ssoBusy !== null;
   const missingFields = signUp.missingFields;
   const showFirstName = continuingSso ? missingFields.includes("first_name") : signUp.requiredFields.includes("first_name") || signUp.optionalFields.includes("first_name");
   const showLastName = continuingSso ? missingFields.includes("last_name") : signUp.requiredFields.includes("last_name") || signUp.optionalFields.includes("last_name");
@@ -68,7 +68,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
           else setVerifying(true);
         });
       } else if (missingFields.length === 0) {
-        setLocalError("GitHub sign-up could not be resumed. Return to sign up and try again.");
+        setLocalError("Social sign-up could not be resumed. Return to sign up and try again.");
       }
     });
   }, [continuingSso, finish, missingFields, signUp]);
@@ -76,7 +76,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   async function handleSocial(connection: SocialConnection) {
     setLocalError("");
     setBlockedMode(null);
-    setSsoBusy(true);
+    setSsoBusy(connection.strategy);
     const { error } = await signUp.sso({
       strategy: connection.strategy,
       redirectUrl: safeRedirect(redirectUrl),
@@ -85,7 +85,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
     if (error) {
       setBlockedMode(restrictedModeFromClerkError(error));
       setLocalError(clerkErrorMessage(error, `We couldn't connect to ${connection.name}.`));
-      setSsoBusy(false);
+      setSsoBusy(null);
     }
   }
 
@@ -196,7 +196,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
 
   return (
     <>
-      {!continuingSso && <SocialConnections busy={busy} onConnect={handleSocial} />}
+      {!continuingSso && <SocialConnections busy={busy} connecting={ssoBusy} onConnect={handleSocial} />}
       <FormAlert>{localError || globalError}</FormAlert>
       {blockedMode && <p className="mb-5 text-sm leading-6 muted">{blockedMode === "waitlist" ? <>Teich is currently using a waitlist. <Link href="/waitlist" className="font-extrabold" style={{ color: "var(--brand)" }}>Join the waitlist</Link> to request access.</> : "Use the secure link in your invitation email to create your account."}</p>}
       <form onSubmit={continuingSso ? handleSsoSubmit : handleSubmit} noValidate>

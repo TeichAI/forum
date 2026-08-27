@@ -29,7 +29,7 @@ The signed `forum_role` session claim authorizes ordinary member behavior. Moder
 
 The custom authentication UI supports Clerk's Open, Invite-only, and Waitlist access modes. Set `NEXT_PUBLIC_CLERK_ACCESS_MODE` to the matching Clerk API value:
 
-- `public` for Open mode. The existing email/password and GitHub signup form remains available.
+- `public` for Open mode. The existing email/password, GitHub, and Hugging Face signup methods remain available.
 - `restricted` for Invite-only mode. Ordinary signup shows an invitation-required page, while Clerk invitation links are accepted by the custom auth routes.
 - `waitlist` for Waitlist mode. Signed-out calls to action lead to the custom `/waitlist` form, and approved users finish signup from the invitation link Clerk emails them.
 

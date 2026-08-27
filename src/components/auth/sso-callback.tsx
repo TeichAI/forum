@@ -45,7 +45,7 @@ export function SsoCallback({ redirectUrl, origin }: { redirectUrl: string; orig
         router.replace(authFormUrl("sign-in", redirectUrl));
         return;
       }
-      throw new Error("GitHub sign-in needs a step that this form does not support yet.");
+      throw new Error("Social sign-in needs a step that this form does not support yet.");
     };
 
     const continueSignUp = async () => {
@@ -54,7 +54,7 @@ export function SsoCallback({ redirectUrl, origin }: { redirectUrl: string; orig
         router.replace(authFormUrl("sign-up", redirectUrl, true));
         return;
       }
-      throw new Error("GitHub sign-up is no longer active. Return to sign up and try again.");
+      throw new Error("Social sign-up is no longer active. Return to sign up and try again.");
     };
 
     void (async () => {
@@ -91,9 +91,9 @@ export function SsoCallback({ redirectUrl, origin }: { redirectUrl: string; orig
         if (signUp.status === "missing_requirements") return await continueSignUp();
         if (signIn.status === "needs_first_factor" || signIn.status === "needs_identifier") return await continueSignIn();
 
-        throw new Error("We couldn't resume GitHub authentication. Return to the form and try again.");
+        throw new Error("We couldn't resume social authentication. Return to the form and try again.");
       } catch (error) {
-        setLocalError(clerkErrorMessage(error, "We couldn't finish GitHub authentication. Please try again."));
+        setLocalError(clerkErrorMessage(error, "We couldn't finish social authentication. Please try again."));
       }
     })();
   }, [clerk, origin, redirectUrl, router, signIn, signUp]);
@@ -106,7 +106,7 @@ export function SsoCallback({ redirectUrl, origin }: { redirectUrl: string; orig
       ) : (
         <div role="status" className="flex items-center gap-3 rounded-xl border px-4 py-4 text-sm font-bold" style={{ borderColor: "var(--line)", background: "var(--surface-soft)" }}>
           <LoaderCircle aria-hidden="true" className="animate-spin" size={19} />
-          Finishing GitHub authentication…
+          Finishing social authentication…
         </div>
       )}
       <div id="clerk-captcha" data-cl-theme="auto" data-cl-size="flexible" className="mt-4" />

@@ -1,9 +1,11 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
+import Image from "next/image";
 
 export const SOCIAL_CONNECTIONS = [
   { strategy: "oauth_github", provider: "github", name: "GitHub" },
+  { strategy: "oauth_huggingface", provider: "huggingface", name: "Hugging Face" },
 ] as const;
 
 export type SocialConnection = (typeof SOCIAL_CONNECTIONS)[number];
@@ -18,32 +20,40 @@ function GitHubIcon() {
 
 export function SocialConnectionIcon({ connection }: { connection: SocialConnection }) {
   if (connection.provider === "github") return <GitHubIcon />;
+  if (connection.provider === "huggingface") {
+    return <Image src="/hugging-face-logo.svg" alt="" aria-hidden="true" width={19} height={18} />;
+  }
   return null;
 }
 
 export function SocialConnections({
   busy,
+  connecting,
   onConnect,
 }: {
   busy: boolean;
+  connecting: SocialConnection["strategy"] | null;
   onConnect: (connection: SocialConnection) => void | Promise<void>;
 }) {
   return (
-    <div className="mb-6">
-      {SOCIAL_CONNECTIONS.map((connection) => (
-        <button
-          key={connection.strategy}
-          type="button"
-          disabled={busy}
-          onClick={() => void onConnect(connection)}
-          className="button w-full border !py-3 font-extrabold hover:bg-[var(--surface-soft)]"
-          style={{ borderColor: "var(--line)", background: "var(--surface)" }}
-        >
-          {busy ? <LoaderCircle aria-hidden="true" className="animate-spin" size={18} /> : <SocialConnectionIcon connection={connection} />}
-          {busy ? `Connecting to ${connection.name}…` : `Continue with ${connection.name}`}
-        </button>
-      ))}
-      <div className="mt-6 flex items-center gap-3" aria-hidden="true">
+    <div className="mb-6 space-y-3">
+      {SOCIAL_CONNECTIONS.map((connection) => {
+        const isConnecting = connecting === connection.strategy;
+        return (
+          <button
+            key={connection.strategy}
+            type="button"
+            disabled={busy}
+            onClick={() => void onConnect(connection)}
+            className="button w-full border !py-3 font-extrabold hover:bg-[var(--surface-soft)]"
+            style={{ borderColor: "var(--line)", background: "var(--surface)" }}
+          >
+            {isConnecting ? <LoaderCircle aria-hidden="true" className="animate-spin" size={18} /> : <SocialConnectionIcon connection={connection} />}
+            {isConnecting ? `Connecting to ${connection.name}…` : `Continue with ${connection.name}`}
+          </button>
+        );
+      })}
+      <div className="!mt-6 flex items-center gap-3" aria-hidden="true">
         <span className="h-px flex-1 bg-[var(--line)]" />
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] muted">or continue with email</span>
         <span className="h-px flex-1 bg-[var(--line)]" />
