@@ -14,7 +14,7 @@ export default async function SsoCallbackPage({
   const origin: AuthFormOrigin = params.origin === "sign-up" ? "sign-up" : "sign-in";
 
   return (
-    <AuthShell eyebrow="Secure authentication" title="Connecting your account" description="Please wait while we finish signing you in with GitHub.">
+    <AuthShell eyebrow="Secure authentication" title="Connecting your account" description="Please wait while we finish signing you in with your social account.">
       <SsoCallback redirectUrl={safeRedirect(params.redirect_url)} origin={origin} />
     </AuthShell>
   );

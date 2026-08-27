@@ -130,7 +130,7 @@ describe("SsoCallback", () => {
 
     setup({ signIn: { status: "needs_protect_check" }, signUp: { status: "abandoned", unverifiedFields: [] } });
     render(<SsoCallback redirectUrl="/" origin="sign-up" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't resume GitHub authentication");
+    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't resume social authentication");
     expect(screen.getByRole("link", { name: "Return to sign up" })).toHaveAttribute("href", "/sign-up");
   });
 
@@ -138,6 +138,6 @@ describe("SsoCallback", () => {
     const { signInHook } = setup({ signIn: { status: "complete" }, loaded: false });
     render(<SsoCallback redirectUrl="/" origin="sign-in" />);
     expect(signInHook.signIn.finalize).not.toHaveBeenCalled();
-    expect(screen.getByRole("status")).toHaveTextContent("Finishing GitHub authentication");
+    expect(screen.getByRole("status")).toHaveTextContent("Finishing social authentication");
   });
 });

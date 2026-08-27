@@ -184,7 +184,7 @@ describe("SignUpForm account details", () => {
   });
 });
 
-describe("SignUpForm GitHub SSO", () => {
+describe("SignUpForm social SSO", () => {
   it("starts GitHub SSO with the callback context and reports provider errors", async () => {
     const user = userEvent.setup();
     const hook = createSignUpHook();
@@ -200,6 +200,20 @@ describe("SignUpForm GitHub SSO", () => {
     });
     expect(screen.getByRole("alert")).toHaveTextContent("GitHub connection failed.");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("starts Hugging Face SSO through Clerk", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook();
+    renderForm(hook, "/settings");
+
+    await user.click(screen.getByRole("button", { name: "Continue with Hugging Face" }));
+
+    expect(hook.signUp.sso).toHaveBeenCalledWith({
+      strategy: "oauth_huggingface",
+      redirectUrl: "/settings",
+      redirectCallbackUrl: "/sso-callback?origin=sign-up&redirect_url=%2Fsettings",
+    });
   });
 
   it("collects only missing supported OAuth fields and never asks for a password", async () => {
@@ -221,7 +235,7 @@ describe("SignUpForm GitHub SSO", () => {
     expect(screen.queryByLabelText("Last name")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Email address")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub|Hugging Face/ })).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText("First name"), "Ada");
     await user.click(screen.getByRole("checkbox", { name: /community standards/i }));

@@ -108,7 +108,7 @@ const sections: LegalSection[] = [
     id: "third-parties",
     title: "Third-party services and links",
     content: <>
-      <p>The Service depends on third parties, including Clerk for identity and account services, GitHub when you choose social sign-in, UploadThing when image uploads are enabled, and hosting, database, security, and infrastructure providers. Their products may be governed by separate terms and privacy notices. We are not responsible for third-party services, content, availability, or practices.</p>
+      <p>The Service depends on third parties, including Clerk for identity and account services, GitHub or Hugging Face when you choose social sign-in, UploadThing when image uploads are enabled, and hosting, database, security, and infrastructure providers. Their products may be governed by separate terms and privacy notices. We are not responsible for third-party services, content, availability, or practices.</p>
       <p>Users may post links, embedded images, code, models, datasets, and other third-party material. A link or integration is not an endorsement. Evaluate third-party material before using it, and use appropriate safeguards before downloading files, running code, or sharing information.</p>
     </>,
   },

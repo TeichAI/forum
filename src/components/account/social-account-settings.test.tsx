@@ -30,14 +30,15 @@ function verification(status: "unverified" | "verified" | "failed", url = "https
   };
 }
 
-function externalAccount(options: { status?: "unverified" | "verified" | "failed"; username?: string; emailAddress?: string } = {}) {
+function externalAccount(options: { status?: "unverified" | "verified" | "failed"; username?: string; emailAddress?: string; provider?: "github" | "huggingface"; verificationUrl?: string } = {}) {
   const status = options.status ?? "verified";
+  const provider = options.provider ?? "github";
   return {
-    id: "external_github",
-    provider: "github",
+    id: `external_${provider}`,
+    provider,
     username: options.username ?? "pond-builder",
     emailAddress: options.emailAddress ?? "pond@example.com",
-    verification: verification(status),
+    verification: verification(status, options.verificationUrl),
     accountIdentifier: vi.fn(() => options.username ?? options.emailAddress ?? "pond-builder"),
     destroy: mocks.destroy,
     reauthorize: mocks.reauthorize,
@@ -72,6 +73,24 @@ describe("SocialAccountSettings", () => {
     await waitFor(() => expect(mocks.createExternalAccount).toHaveBeenCalledWith({ strategy: "oauth_github", redirectUrl: "/settings" }));
     expect(mocks.push).toHaveBeenCalledWith("https://github.com/login/oauth/authorize");
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("starts a Hugging Face connection with Clerk and renders the official logo", async () => {
+    const created = externalAccount({
+      provider: "huggingface",
+      status: "unverified",
+      verificationUrl: "https://huggingface.co/oauth/authorize",
+    });
+    mocks.createExternalAccount.mockResolvedValue(created);
+    const user = userEvent.setup();
+    renderSettings();
+
+    const connectButton = screen.getByRole("button", { name: "Connect Hugging Face" });
+    expect(connectButton.closest("div.rounded-2xl")?.querySelector("img")).toHaveAttribute("src", "/hugging-face-logo.svg");
+    await user.click(connectButton);
+
+    await waitFor(() => expect(mocks.createExternalAccount).toHaveBeenCalledWith({ strategy: "oauth_huggingface", redirectUrl: "/settings" }));
+    expect(mocks.push).toHaveBeenCalledWith("https://huggingface.co/oauth/authorize");
   });
 
   it("shows Clerk and missing-redirect errors without leaving the button busy", async () => {
