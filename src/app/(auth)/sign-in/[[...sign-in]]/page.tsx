@@ -7,8 +7,9 @@ import { SignInForm } from "@/components/auth/sign-in-form";
 import { InvitationForm } from "@/components/auth/invitation-form";
 import { safeRedirect } from "@/components/auth/auth-utils";
 import { getClerkAccessMode } from "@/lib/access-mode";
+import { privateMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = { title: "Sign in" };
+export const metadata: Metadata = privateMetadata("Sign in");
 
 type SignInSearchParams = {
   redirect_url?: string | string[];

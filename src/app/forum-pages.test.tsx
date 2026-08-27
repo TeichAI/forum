@@ -49,7 +49,7 @@ beforeEach(() => {
 describe("category, tag, and search pages", () => {
   it("generates category metadata and renders populated and empty states", async () => {
     mocks.category.mockResolvedValue(category);
-    await expect(categoryMetadata({ params: Promise.resolve({ slug: "general" }) })).resolves.toEqual({ title: "General", description: "Community talk" });
+    await expect(categoryMetadata({ params: Promise.resolve({ slug: "general" }) })).resolves.toEqual(expect.objectContaining({ title: "General", description: "Community talk", alternates: { canonical: "http://localhost:3000/c/general" } }));
     mocks.listThreads.mockResolvedValue({ items: [thread], nextCursor: null });
     const { rerender } = render(await CategoryPage({ params: Promise.resolve({ slug: "general" }) }));
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
@@ -118,10 +118,10 @@ describe("category, tag, and search pages", () => {
 describe("protected utility pages", () => {
   it("renders populated and empty bookmarks", async () => {
     mocks.bookmarks.mockResolvedValue([{ thread }]);
-    const { rerender } = render(await BookmarksPage());
+    const { rerender } = render(await BookmarksPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("A discussion")).toBeInTheDocument();
     mocks.bookmarks.mockResolvedValue([]);
-    rerender(await BookmarksPage());
+    rerender(await BookmarksPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("Nothing saved yet")).toBeInTheDocument();
   });
 

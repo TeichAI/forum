@@ -22,6 +22,7 @@ import { canComment } from "@/lib/space-posting-permissions";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { publicThreadWhere, unavailableMetadata } from "@/lib/access";
 import { listReplyBranches, REPLY_BRANCH_PAGE_SIZE } from "@/lib/reply-pagination";
+import { canonicalUrl, cleanMarkdownExcerpt, siteName, socialImagePath } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const thread = await db.thread.findFirst({
     where: { slug, ...publicThreadWhere },
-    select: { title: true, body: true },
+    select: { title: true, body: true, slug: true, createdAt: true, updatedAt: true, author: { select: { displayName: true } }, category: { select: { name: true } }, tags: { include: { tag: { select: { name: true } } } } },
   });
-  return thread ? { title: thread.title, description: thread.body.slice(0, 150) } : unavailableMetadata;
+  if (!thread) return unavailableMetadata;
+  const description = cleanMarkdownExcerpt(thread.body);
+  const url = canonicalUrl(`/t/${thread.slug}`);
+  return { title: thread.title, description, alternates: { canonical: url }, openGraph: { type: "article", siteName, title: thread.title, description, url, publishedTime: thread.createdAt.toISOString(), modifiedTime: thread.updatedAt.toISOString(), authors: [thread.author.displayName], section: thread.category.name, tags: thread.tags.map(({ tag }) => tag.name), images: [{ url: canonicalUrl(socialImagePath), width: 1200, height: 630, alt: siteName }] }, twitter: { card: "summary_large_image", title: thread.title, description, images: [canonicalUrl(socialImagePath)] } };
 }
 
 export default async function ThreadPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ replyCursor?: string; branch?: string; branchPage?: string }> }) {

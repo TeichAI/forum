@@ -4,8 +4,10 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getMailDraft } from "@/lib/mail";
 import { uploadsEnabled } from "@/lib/upload-capability";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Compose mail");
 
 export default async function ComposeMailPage({ searchParams }: { searchParams: Promise<{ to?: string; draft?: string }> }) {
   const user = await requireUser();

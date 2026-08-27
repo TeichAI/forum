@@ -2,8 +2,10 @@ import { AccountSecurity } from "@/components/account/account-security";
 import { ProfileSettings } from "@/components/account/profile-settings";
 import { requireUser } from "@/lib/auth";
 import { isE2ETestMode } from "@/lib/e2e-auth";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Account settings");
 export default async function SettingsPage() {
   const user = await requireUser();
   const identityControlsEnabled = !isE2ETestMode();

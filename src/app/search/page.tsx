@@ -3,8 +3,10 @@ import { ThreadCard } from "@/components/forum/thread-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { searchThreadsPage } from "@/lib/queries";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Search the forum");
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string; cursor?: string }> }) {
   const { q = "", cursor } = await searchParams;

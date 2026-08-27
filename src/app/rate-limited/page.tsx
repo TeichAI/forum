@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { Clock3 } from "lucide-react";
 import { RateLimitedPageControls } from "./rate-limited-page-controls";
+import { privateMetadata } from "@/lib/metadata";
 
-export const metadata = { title: "Please slow down" };
+export const metadata = privateMetadata("Please slow down");
 export const dynamic = "force-dynamic";
 
 export default async function RateLimitedPage({ searchParams }: { searchParams: Promise<{ retryAfter?: string; resetAt?: string }> }) {

@@ -31,9 +31,9 @@ beforeEach(() => {
 
 describe("authentication route pages", () => {
   it("exports concise page metadata", () => {
-    expect(signInMetadata).toEqual({ title: "Sign in" });
-    expect(signUpMetadata).toEqual({ title: "Join" });
-    expect(waitlistMetadata).toEqual({ title: "Join the waitlist" });
+    expect(signInMetadata).toEqual({ title: "Sign in", robots: { index: false, follow: false } });
+    expect(signUpMetadata).toEqual({ title: "Join", robots: { index: false, follow: false } });
+    expect(waitlistMetadata).toEqual({ title: "Join the waitlist", robots: { index: false, follow: false } });
   });
 
   it("renders the anonymous sign-in route with a valid local redirect", async () => {

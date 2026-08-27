@@ -59,8 +59,8 @@ beforeEach(() => {
 
 describe("discussion page", () => {
   it("generates fallback and populated metadata", async () => {
-    mocks.thread.mockResolvedValueOnce({ title: "Topic", body: "Long description" }).mockResolvedValueOnce(null);
-    await expect(threadMetadata({ params: Promise.resolve({ slug: "topic" }) })).resolves.toEqual({ title: "Topic", description: "Long description" });
+    mocks.thread.mockResolvedValueOnce({ title: "Topic", body: "Long **description**", slug: "topic", createdAt: now, updatedAt: now, author: { displayName: "Member" }, category: { name: "General" }, tags: [{ tag: { name: "Testing" } }] }).mockResolvedValueOnce(null);
+    await expect(threadMetadata({ params: Promise.resolve({ slug: "topic" }) })).resolves.toEqual(expect.objectContaining({ title: "Topic", description: "Long description", alternates: { canonical: "http://localhost:3000/t/topic" }, openGraph: expect.objectContaining({ type: "article", publishedTime: now.toISOString(), tags: ["Testing"] }) }));
     await expect(threadMetadata({ params: Promise.resolve({ slug: "missing" }) })).resolves.toEqual({ title: "Content unavailable", description: "This content is unavailable.", robots: { index: false, follow: false } });
   });
 
@@ -209,7 +209,7 @@ describe("discussion page", () => {
 describe("member profile", () => {
   it("generates metadata and renders member actions without role-management controls", async () => {
     mocks.user.mockResolvedValue({ ...other, _count: { followers: 2, following: 3, threads: 4, replies: 5 }, followers: [] });
-    await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual({ title: "Other" });
+    await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual(expect.objectContaining({ title: "Other", alternates: { canonical: "http://localhost:3000/members/other" } }));
     mocks.viewer.mockResolvedValue(admin);
     mocks.listThreads.mockResolvedValue({ items: [{ id: "thread", title: "Recent topic" }], nextCursor: null });
     render(await MemberPage({ params: Promise.resolve({ id: "other" }) }));
@@ -246,7 +246,7 @@ describe("notification and moderation pages", () => {
       { id: "nested-reply", type: "REPLY", conversationId: null, thread: { slug: "topic", title: "Topic" }, reply: { parentReplyId: "parent" }, replyId: "nested", actor: other, readAt: now, createdAt: now },
       { id: "system", type: "MODERATION", thread: null, replyId: null, actor: null, readAt: null, createdAt: now },
     ]);
-    render(await NotificationsPage());
+    render(await NotificationsPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("button", { name: /Mark all read/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /replied to your discussion/ })).toHaveAttribute("href", "/t/topic#reply-reply");
     expect(screen.getByRole("link", { name: /replied to your reply/ })).toHaveAttribute("href", "/t/topic#reply-nested");
@@ -256,7 +256,7 @@ describe("notification and moderation pages", () => {
   it("renders empty notifications without mark-all", async () => {
     mocks.requireUser.mockResolvedValue(member);
     mocks.notifications.mockResolvedValue([]);
-    render(await NotificationsPage());
+    render(await NotificationsPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("You are all caught up")).toBeInTheDocument();
     expect(screen.queryByText(/Mark all read/)).not.toBeInTheDocument();
   });

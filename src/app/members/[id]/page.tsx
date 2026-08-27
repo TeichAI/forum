@@ -14,9 +14,10 @@ import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listThreadsPage } from "@/lib/queries";
 import { unavailableMetadata } from "@/lib/access";
+import { publicMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> { const { id } = await params; const user = await db.user.findFirst({ where: { id, status: "ACTIVE" }, select: { displayName: true } }); return user ? { title: user.displayName } : unavailableMetadata; }
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> { const { id } = await params; const user = await db.user.findFirst({ where: { id, status: "ACTIVE" }, select: { displayName: true, bio: true } }); return user ? publicMetadata({ title: user.displayName, description: user.bio || `Public profile for ${user.displayName} in the Teich community.`, path: `/members/${id}` }) : unavailableMetadata; }
 
 export default async function MemberPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ id: string }>; searchParams?: Promise<{ cursor?: string }> }) {
   const { id } = await params; const { cursor } = await searchParams; const viewer = await getViewer();

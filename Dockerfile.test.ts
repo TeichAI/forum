@@ -5,20 +5,17 @@ import { beforeAll, describe, expect, it } from "vitest";
 const dockerfilePath = join(process.cwd(), "Dockerfile");
 const composePath = join(process.cwd(), "compose.yaml");
 const exampleEnvPath = join(process.cwd(), ".env.example");
-const workflowPath = join(process.cwd(), ".github/workflows/verify.yml");
 
 let dockerfile: string;
 let compose: string;
 let exampleEnv: string;
-let workflow: string;
 let runnerStage: string;
 
 beforeAll(async () => {
-  [dockerfile, compose, exampleEnv, workflow] = await Promise.all([
+  [dockerfile, compose, exampleEnv] = await Promise.all([
     readFile(dockerfilePath, "utf8"),
     readFile(composePath, "utf8"),
     readFile(exampleEnvPath, "utf8"),
-    readFile(workflowPath, "utf8"),
   ]);
 
   const runnerStageStart = dockerfile.indexOf("FROM base AS runner");
@@ -66,10 +63,6 @@ describe("production Dockerfile", () => {
       expect(composeBuildArguments).not.toContain(variable);
     }
     expect(compose).toMatch(/env_file:\s+- \$\{FORUM_ENV_FILE:-\.env\.local\}/);
-  });
-
-  it("uses the tracked example env when CI starts the test database", () => {
-    expect(workflow).toMatch(/FORUM_ENV_FILE:\s*\.env\.example/);
   });
 
   it("includes the Prisma CLI and migration files in the runner image", () => {

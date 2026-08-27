@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalDocument, type LegalSection } from "@/components/legal/legal-document";
+import { publicMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
-  title: "Terms of Service",
-  description: "The rules and conditions that govern access to and use of Teich Forum.",
-};
+export const metadata: Metadata = publicMetadata({ title: "Terms of Service", description: "The rules and conditions that govern access to and use of Teich Forum.", path: "/terms" });
 
 const EFFECTIVE_DATE = "August 25, 2026";
 

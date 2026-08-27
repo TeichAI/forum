@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { SsoCallback } from "@/components/auth/sso-callback";
 import { safeRedirect, type AuthFormOrigin } from "@/components/auth/auth-utils";
+import { privateMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = { title: "Finishing authentication" };
+export const metadata: Metadata = privateMetadata("Finishing authentication");
 
 export default async function SsoCallbackPage({
   searchParams,

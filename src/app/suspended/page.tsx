@@ -1,1 +1,4 @@
+import { privateMetadata } from "@/lib/metadata";
+
+export const metadata = privateMetadata("Account suspended");
 export default function SuspendedPage() { return <div className="shell max-w-xl py-20"><div className="card p-10 text-center"><div className="eyebrow">Account unavailable</div><h1 className="mt-2 text-3xl font-black">Your forum access is suspended</h1><p className="mt-3 leading-7 muted">You can still read public discussions after signing out. Use the account menu in the header, or contact the Teich team if you believe this was a mistake.</p></div></div>; }

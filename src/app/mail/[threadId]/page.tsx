@@ -2,8 +2,10 @@ import { Mailbox } from "@/components/mail/mailbox";
 import { MailReader } from "@/components/mail/mail-reader";
 import { requireUser } from "@/lib/auth";
 import { normalizeMailFolder } from "@/lib/mail";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Mail conversation");
 
 export default async function MailThreadPage({ params, searchParams }: { params: Promise<{ threadId: string }>; searchParams: Promise<{ folder?: string; q?: string; cursor?: string }> }) {
   const user = await requireUser();

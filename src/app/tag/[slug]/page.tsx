@@ -2,8 +2,15 @@ import { notFound, redirect } from "next/navigation";
 import { ThreadCard } from "@/components/forum/thread-card";
 import { db } from "@/lib/db";
 import { listThreadsPage } from "@/lib/queries";
+import type { Metadata } from "next";
+import { publicMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const tag = await db.tag.findUnique({ where: { slug } });
+  return tag ? publicMetadata({ title: `#${tag.name}`, description: `Discussions tagged with ${tag.name}.`, path: `/tag/${tag.slug}` }) : { title: "Content unavailable", robots: { index: false, follow: false } };
+}
 
 export default async function TagPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ cursor?: string }> }) {
   const { slug } = await params;

@@ -10,13 +10,14 @@ import { db } from "@/lib/db";
 import { canModerate, listThreadsPage } from "@/lib/queries";
 import { canStartDiscussion } from "@/lib/space-posting-permissions";
 import { unavailableMetadata } from "@/lib/access";
+import { publicMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const category = await db.category.findFirst({ where: { slug, archivedAt: null } });
-  return category ? { title: category.name, description: category.description } : unavailableMetadata;
+  return category ? publicMetadata({ title: category.name, description: category.description, path: `/c/${category.slug}` }) : unavailableMetadata;
 }
 
 export default async function CategoryPage({ params, searchParams = Promise.resolve({}) }: { params: Promise<{ slug: string }>; searchParams?: Promise<{ cursor?: string }> }) {

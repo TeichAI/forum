@@ -9,12 +9,19 @@ import { isE2ETestMode } from "@/lib/e2e-auth";
 import { uploadsEnabled } from "@/lib/upload-capability";
 import { getClerkAccessMode } from "@/lib/access-mode";
 import { applicationUrl } from "@/lib/env";
+import { siteDescription, siteName, socialImagePath } from "@/lib/metadata";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: applicationUrl(),
-  title: { default: "Teich Forum", template: "%s · Teich Forum" },
-  description: "The community space for Teich—ask questions, share what you are building, and shape the project.",
+  title: { default: siteName, template: `%s · ${siteName}` },
+  description: siteDescription,
+  applicationName: siteName,
+  authors: [{ name: "Teich" }],
+  creator: "Teich",
+  robots: { index: true, follow: true },
+  openGraph: { type: "website", locale: "en_US", siteName, title: siteName, description: siteDescription, url: "/", images: [{ url: socialImagePath, width: 1200, height: 630, alt: siteName }] },
+  twitter: { card: "summary_large_image", title: siteName, description: siteDescription, images: [socialImagePath] },
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

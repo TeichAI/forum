@@ -1,8 +1,10 @@
 import { Mailbox } from "@/components/mail/mailbox";
 import { requireUser } from "@/lib/auth";
 import { normalizeMailFolder } from "@/lib/mail";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Mail");
 
 export default async function MailPage({ searchParams }: { searchParams: Promise<{ folder?: string; q?: string; cursor?: string }> }) {
   const user = await requireUser();

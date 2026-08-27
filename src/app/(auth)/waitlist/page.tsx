@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WaitlistForm } from "@/components/auth/waitlist-form";
 import { getClerkAccessMode } from "@/lib/access-mode";
+import { privateMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = { title: "Join the waitlist" };
+export const metadata: Metadata = privateMetadata("Join the waitlist");
 
 export default async function WaitlistPage() {
   const [{ userId }, accessMode] = await Promise.all([auth(), Promise.resolve(getClerkAccessMode())]);

@@ -11,7 +11,7 @@ vi.mock("@/components/auth/sso-callback", () => ({
 
 describe("SSO callback page", () => {
   it("exports metadata and passes sanitized callback context", async () => {
-    expect(metadata).toEqual({ title: "Finishing authentication" });
+    expect(metadata).toEqual({ title: "Finishing authentication", robots: { index: false, follow: false } });
     render(await SsoCallbackPage({ searchParams: Promise.resolve({ redirect_url: "/settings", origin: "sign-up" }) }));
     expect(screen.getByRole("heading", { name: "Connecting your account" })).toBeInTheDocument();
     expect(screen.getByTestId("callback")).toHaveAttribute("data-redirect", "/settings");

@@ -6,8 +6,10 @@ import { ThreadCard } from "@/components/forum/thread-card";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listThreadsPage } from "@/lib/queries";
+import { publicMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = publicMetadata({ path: "/" });
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ sort?: string; cursor?: string }> }) {
   const { sort: rawSort, cursor } = await searchParams;

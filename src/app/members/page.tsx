@@ -8,13 +8,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { db } from "@/lib/db";
 import { listMembersPage } from "@/lib/queries";
+import { publicMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Members",
-  description: "Meet the people building and sharing in the Teich community.",
-};
+export const metadata: Metadata = publicMetadata({ title: "Members", description: "Meet the people building and sharing in the Teich community.", path: "/members" });
 
 type MemberListItem = Awaited<ReturnType<typeof listMembersPage>>["items"][number];
 

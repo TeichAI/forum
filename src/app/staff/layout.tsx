@@ -1,8 +1,10 @@
 import { ShieldCheck } from "lucide-react";
 import { StaffNav } from "@/components/staff/staff-nav";
 import { requireModerator } from "@/lib/auth";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Staff console");
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireModerator();

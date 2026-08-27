@@ -9,12 +9,14 @@ import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { decodeCursor, encodeCursor } from "@/lib/queries";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+export const metadata = privateMetadata("Notifications");
 
 const copy = { MENTION: "mentioned you", UPVOTE: "upvoted your post", FOLLOW: "started following you", MODERATION: "sent you a moderation update" } as const;
 
-export default async function NotificationsPage({ searchParams = Promise.resolve({}) }: { searchParams?: Promise<{ cursor?: string }> } = {}) {
+export default async function NotificationsPage({ searchParams }: { searchParams: Promise<{ cursor?: string }> }) {
   const user = await requireUser();
   const { cursor: rawCursor } = await searchParams;
   const cursor = decodeCursor<{ createdAt: string; id: string }>(rawCursor);
