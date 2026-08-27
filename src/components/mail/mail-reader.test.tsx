@@ -17,13 +17,14 @@ import { MailReader } from "./mail-reader";
 const now = new Date("2026-08-25T12:00:00Z");
 const user = { id: "user", username: "you", displayName: "You", imageUrl: null, role: "MEMBER", status: "ACTIVE" };
 const other = { id: "other", username: "other", displayName: "Other", imageUrl: null, role: "MEMBER", status: "ACTIVE" };
-const participant = { location: "INBOX", starred: false, forcedUnread: false, lastReadAt: null, thread: { subject: "Subject", lastActivityAt: now, participants: [{ userId: "user", user }, { userId: "other", user: other }], entries: [{ id: "entry", authorId: "other", author: other, body: "Private body", createdAt: now }] } };
+const viewer = { id: "user", clerkId: "clerk-user", role: "MEMBER" as const };
+const participant = { accessContext: "personal", isStaffMailbox: false, location: "INBOX", starred: false, forcedUnread: false, lastReadAt: null, thread: { subject: "Subject", lastActivityAt: now, participants: [{ userId: "user", user }, { userId: "other", user: other }], entries: [{ id: "entry", authorId: "other", author: other, body: "Private body", createdAt: now }] } };
 
 beforeEach(() => { vi.clearAllMocks(); mocks.thread.mockResolvedValue(participant); mocks.block.mockResolvedValue(null); mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); }); });
 
 describe("MailReader", () => {
   it("renders thread content, accessible controls, report, and reply", async () => {
-    render(await MailReader({ userId: "user", threadId: "thread", folder: "inbox" }));
+    render(await MailReader({ viewer, threadId: "thread", folder: "inbox" }));
     expect(screen.getByRole("heading", { name: "Subject" })).toBeInTheDocument();
     expect(screen.getByText("Private body")).toBeInTheDocument();
     expect(screen.getByText("Read receipt")).toBeInTheDocument();
@@ -36,7 +37,7 @@ describe("MailReader", () => {
   it("shows restore/delete controls in trash and disables replies for blocked members", async () => {
     mocks.thread.mockResolvedValue({ ...participant, location: "TRASH", starred: true });
     mocks.block.mockResolvedValue({ blockerId: "other" });
-    render(await MailReader({ userId: "user", threadId: "thread", folder: "trash" }));
+    render(await MailReader({ viewer, threadId: "thread", folder: "trash" }));
     expect(screen.getByRole("button", { name: "Unstar mail" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore from trash" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete forever" })).toBeInTheDocument();
@@ -45,6 +46,25 @@ describe("MailReader", () => {
 
   it("rejects inaccessible threads", async () => {
     mocks.thread.mockResolvedValue(null);
-    await expect(MailReader({ userId: "user", threadId: "missing", folder: "inbox" })).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(MailReader({ viewer, threadId: "missing", folder: "inbox" })).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("shows Staff Mailbox to the member while retaining named staff entry authors", async () => {
+    const staffAuthor = { id: "moderator", username: "moderator", displayName: "Mod Person", imageUrl: null, role: "MODERATOR", status: "ACTIVE" };
+    mocks.thread.mockResolvedValue({ ...participant, isStaffMailbox: true, thread: { ...participant.thread, staffMailbox: {}, participants: [{ userId: "user", user }], entries: [{ id: "entry", authorId: "moderator", author: staffAuthor, body: "Named response", createdAt: now }] } });
+    render(await MailReader({ viewer, threadId: "thread", folder: "inbox" }));
+    expect(screen.getByText("Staff Mailbox")).toBeInTheDocument();
+    expect(screen.getByText("Mod Person")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Reply to Staff Mailbox…")).toBeInTheDocument();
+    expect(mocks.block).not.toHaveBeenCalled();
+  });
+
+  it("shows the originating member profile in the shared staff view", async () => {
+    const staffViewer = { id: "moderator", clerkId: "clerk-moderator", role: "MODERATOR" as const };
+    mocks.thread.mockResolvedValue({ ...participant, accessContext: "staff", isStaffMailbox: true, thread: { ...participant.thread, staffMailbox: {}, participants: [{ userId: "other", user: other }] } });
+    render(await MailReader({ viewer: staffViewer, threadId: "thread", folder: "staff", staffFolder: "archive" }));
+    expect(screen.getByRole("link", { name: /Other.*@other/ })).toHaveAttribute("href", "/members/other");
+    expect(screen.getByPlaceholderText("Reply to Other…")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to mail list" })).toHaveAttribute("href", "/mail?folder=staff&staffFolder=archive");
   });
 });

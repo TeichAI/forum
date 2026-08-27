@@ -329,16 +329,30 @@ model Follow {
 }
 
 model MailThread {
-  id             String            @id @default(cuid())
+  id             String              @id @default(cuid())
   subject        String
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  lastActivityAt DateTime          @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  lastActivityAt DateTime            @default(now())
   entries        MailEntry[]
   participants   MailParticipant[]
   drafts         MailDraft[]
+  staffMailbox   StaffMailboxThread?
 
   @@index([lastActivityAt(sort: Desc), id])
+}
+
+model StaffMailboxThread {
+  threadId     String       @id
+  location     MailLocation @default(INBOX)
+  starred      Boolean      @default(false)
+  lastReadAt   DateTime?
+  forcedUnread Boolean      @default(false)
+  removedAt    DateTime?
+  thread       MailThread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([location, removedAt, threadId])
+  @@index([starred, removedAt])
 }
 
 model MailEntry {
@@ -372,16 +386,17 @@ model MailParticipant {
 }
 
 model MailDraft {
-  id         String               @id @default(cuid())
-  ownerId    String
-  threadId   String?
-  subject    String               @default("")
-  body       String               @default("")
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
-  owner      User                 @relation("MailDraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  thread     MailThread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  recipients MailDraftRecipient[]
+  id           String               @id @default(cuid())
+  ownerId      String
+  threadId     String?
+  subject      String               @default("")
+  body         String               @default("")
+  staffMailbox Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  owner        User                 @relation("MailDraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  thread       MailThread?          @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  recipients   MailDraftRecipient[]
 
   @@index([ownerId, updatedAt(sort: Desc)])
   @@index([threadId, ownerId])

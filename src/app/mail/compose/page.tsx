@@ -16,5 +16,5 @@ export default async function ComposeMailPage({ searchParams }: { searchParams: 
     where: { id: query.to, status: "ACTIVE" },
     select: { id: true, displayName: true, username: true, imageUrl: true, role: true },
   }) : null;
-  return <div className="shell mail-compose-page card"><MailComposer role={user.role} initialRecipients={preaddressed ? [preaddressed] : []} uploadsEnabled={uploadsEnabled()} draft={draft ? { id: draft.id, threadId: draft.threadId, subject: draft.subject, body: draft.body, recipients: draft.recipients.map((item) => item.recipient) } : undefined} /></div>;
+  return <div className="shell mail-compose-page card"><MailComposer role={user.role} initialRecipients={preaddressed ? [{ kind: "user", ...preaddressed }] : []} uploadsEnabled={uploadsEnabled()} draft={draft ? { id: draft.id, threadId: draft.threadId, subject: draft.subject, body: draft.body, staffMailbox: draft.staffMailbox, recipients: draft.recipients.map((item) => ({ kind: "user", ...item.recipient })) } : undefined} /></div>;
 }

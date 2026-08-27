@@ -1,13 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ requireUser: vi.fn(), draft: vi.fn(), member: vi.fn(), notFound: vi.fn() }));
+const mocks = vi.hoisted(() => ({ requireUser: vi.fn(), staff: vi.fn(), draft: vi.fn(), member: vi.fn(), notFound: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/lib/mail", () => ({ normalizeMailFolder: (value: string) => value === "sent" ? "sent" : "inbox", getMailDraft: mocks.draft }));
+vi.mock("@/lib/mail", () => ({ normalizeMailFolder: (value: string) => value === "sent" || value === "staff" ? value : "inbox", normalizeStaffMailFolder: (value: string) => value === "trash" ? "trash" : "inbox", getMailDraft: mocks.draft }));
+vi.mock("@/lib/mail-access", () => ({ isCurrentMailStaff: mocks.staff }));
 vi.mock("@/lib/db", () => ({ db: { user: { findFirst: mocks.member } } }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: () => true }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
-vi.mock("@/components/mail/mailbox", () => ({ Mailbox: ({ userId, folder, query, selectedId, children }: { userId: string; folder: string; query: string; selectedId?: string; children?: React.ReactNode }) => <section>{`${userId}:${folder}:${query}:${selectedId ?? "none"}`}{children}</section> }));
+vi.mock("@/components/mail/mailbox", () => ({ Mailbox: ({ viewer, folder, query, selectedId, children }: { viewer: { id: string }; folder: string; query: string; selectedId?: string; children?: React.ReactNode }) => <section>{`${viewer.id}:${folder}:${query}:${selectedId ?? "none"}`}{children}</section> }));
 vi.mock("@/components/mail/mail-reader", () => ({ MailReader: ({ threadId }: { threadId: string }) => <p>{`Reader ${threadId}`}</p> }));
 vi.mock("@/components/mail/mail-composer", () => ({ MailComposer: ({ initialRecipients, draft }: { initialRecipients: Array<{ displayName: string }>; draft?: { subject: string } }) => <p>{draft ? `Draft ${draft.subject}` : `To ${initialRecipients[0]?.displayName ?? "nobody"}`}</p> }));
 
@@ -15,10 +16,10 @@ import MailPage from "./page";
 import MailThreadPage from "./[threadId]/page";
 import ComposeMailPage from "./compose/page";
 
-const user = { id: "user", role: "MEMBER" };
+const user = { id: "user", clerkId: "clerk-user", role: "MEMBER" };
 const member = { id: "other", displayName: "Other", username: "other", imageUrl: null, role: "MEMBER" };
 
-beforeEach(() => { vi.clearAllMocks(); mocks.requireUser.mockResolvedValue(user); mocks.draft.mockResolvedValue(null); mocks.member.mockResolvedValue(member); mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); }); });
+beforeEach(() => { vi.clearAllMocks(); mocks.requireUser.mockResolvedValue(user); mocks.staff.mockResolvedValue(false); mocks.draft.mockResolvedValue(null); mocks.member.mockResolvedValue(member); mocks.notFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); }); });
 
 describe("Mail pages", () => {
   it("renders filtered list and selected reader routes", async () => {
@@ -34,12 +35,21 @@ describe("Mail pages", () => {
     const first = render(await ComposeMailPage({ searchParams: Promise.resolve({ to: "other" }) }));
     expect(screen.getByText("To Other")).toBeInTheDocument();
     first.unmount();
-    mocks.draft.mockResolvedValue({ id: "draft", threadId: null, subject: "Saved", body: "Body", recipients: [{ recipient: member }] });
+    mocks.draft.mockResolvedValue({ id: "draft", threadId: null, subject: "Saved", body: "Body", staffMailbox: false, recipients: [{ recipient: member }] });
     render(await ComposeMailPage({ searchParams: Promise.resolve({ draft: "draft" }) }));
     expect(screen.getByText("Draft Saved")).toBeInTheDocument();
   });
 
   it("rejects inaccessible draft ids", async () => {
     await expect(ComposeMailPage({ searchParams: Promise.resolve({ draft: "missing" }) })).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("normalizes Staff Inbox for members and keeps it for verified staff", async () => {
+    const memberView = render(await MailPage({ searchParams: Promise.resolve({ folder: "staff", staffFolder: "trash" }) }));
+    expect(screen.getByText("user:inbox::none")).toBeInTheDocument();
+    memberView.unmount();
+    mocks.staff.mockResolvedValue(true);
+    render(await MailPage({ searchParams: Promise.resolve({ folder: "staff", staffFolder: "trash" }) }));
+    expect(screen.getByText("user:staff::none")).toBeInTheDocument();
   });
 });

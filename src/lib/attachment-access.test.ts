@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ participant: vi.fn(), report: vi.fn(), verifiedRole: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { mailEntry: { findFirst: mocks.participant }, report: { findFirst: mocks.report } } }));
-vi.mock("@/lib/auth", () => ({ getVerifiedUserRole: mocks.verifiedRole }));
+const mocks = vi.hoisted(() => ({ canAccessMailEntry: vi.fn() }));
+vi.mock("@/lib/mail-access", () => ({ canAccessMailEntry: mocks.canAccessMailEntry }));
 
 import { canAccessPrivateAttachment } from "./attachment-access";
 
@@ -11,9 +10,7 @@ const entry = { userId: "owner", context: "MAIL_ENTRY" as const, targetId: "entr
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.participant.mockResolvedValue(null);
-  mocks.report.mockResolvedValue(null);
-  mocks.verifiedRole.mockResolvedValue("MEMBER");
+  mocks.canAccessMailEntry.mockResolvedValue(false);
 });
 
 describe("private attachment authorization", () => {
@@ -22,26 +19,16 @@ describe("private attachment authorization", () => {
     await expect(canAccessPrivateAttachment({ userId: "other", context, targetId: null }, member)).resolves.toBe(false);
   });
 
-  it("allows active participants and denies removed or unrelated participants", async () => {
-    mocks.participant.mockResolvedValueOnce({ id: "entry" });
+  it("uses the shared Mail authorization rule for entry attachments", async () => {
+    mocks.canAccessMailEntry.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await expect(canAccessPrivateAttachment(entry, member)).resolves.toBe(true);
     await expect(canAccessPrivateAttachment(entry, member)).resolves.toBe(false);
-    expect(mocks.participant).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ thread: { participants: { some: { userId: "viewer", removedAt: null } } } }) }));
+    expect(mocks.canAccessMailEntry).toHaveBeenCalledWith(member, "entry", { allowReportedStaff: true });
   });
 
-  it("allows freshly verified staff only for the exact reported Mail entry", async () => {
-    const moderator = { ...member, role: "MODERATOR" as const };
-    mocks.verifiedRole.mockResolvedValue("MODERATOR");
-    mocks.report.mockResolvedValueOnce({ id: "report" });
-    await expect(canAccessPrivateAttachment(entry, moderator)).resolves.toBe(true);
-    expect(mocks.report).toHaveBeenCalledWith({ where: { targetType: "MAIL_ENTRY", targetId: "entry" }, select: { id: true } });
-  });
-
-  it("denies stale staff roles and provider verification failures", async () => {
-    const admin = { ...member, role: "ADMIN" as const };
-    mocks.verifiedRole.mockResolvedValueOnce("MEMBER").mockResolvedValueOnce(null);
-    await expect(canAccessPrivateAttachment(entry, admin)).resolves.toBe(false);
-    await expect(canAccessPrivateAttachment(entry, admin)).resolves.toBe(false);
-    expect(mocks.report).not.toHaveBeenCalled();
+  it("rejects non-Mail private contexts and missing targets", async () => {
+    await expect(canAccessPrivateAttachment({ ...entry, context: "THREAD" }, member)).resolves.toBe(false);
+    await expect(canAccessPrivateAttachment({ ...entry, targetId: null }, member)).resolves.toBe(false);
+    expect(mocks.canAccessMailEntry).not.toHaveBeenCalled();
   });
 });

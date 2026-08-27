@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 beforeEach(async () => {
   await db.$executeRawUnsafe(`TRUNCATE TABLE
     "RateLimitBucket", "Attachment", "Block", "StaffNote", "Notification", "ModerationAction", "Report", "ModerationCase", "TagAlias", "ModerationSettings",
-    "MailDraftRecipient", "MailDraft", "MailParticipant", "MailEntry", "MailThread", "Follow", "Bookmark", "ReplyDislike", "ReplyVote",
+    "MailDraftRecipient", "MailDraft", "StaffMailboxThread", "MailParticipant", "MailEntry", "MailThread", "Follow", "Bookmark", "ReplyDislike", "ReplyVote",
     "ThreadDislike", "ThreadVote", "Reply", "ThreadTag", "Thread", "Tag", "Category", "User"
     RESTART IDENTITY CASCADE`);
 });

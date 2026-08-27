@@ -11,8 +11,8 @@ vi.mock("@/lib/uploadthing", () => ({ UploadButton: ({ endpoint, onClientUploadC
 
 import { MailComposer } from "./mail-composer";
 
-const recipient = { id: "cm000000000000000000000001", displayName: "Other", username: "other", imageUrl: null, role: "MEMBER" };
-const moderator = { id: "cm000000000000000000000003", displayName: "Mod Person", username: "moderator", imageUrl: "https://example.com/mod.png", role: "MODERATOR" };
+const recipient = { kind: "user" as const, id: "cm000000000000000000000001", displayName: "Other", username: "other", imageUrl: null, role: "MEMBER" };
+const moderator = { kind: "user" as const, id: "cm000000000000000000000003", displayName: "Mod Person", username: "moderator", imageUrl: "https://example.com/mod.png", role: "MODERATOR" };
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -69,17 +69,47 @@ describe("MailComposer", () => {
 
     fireEvent.change(input, { target: { value: "ot" } });
     expect(input).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Searching members…")).toBeInTheDocument();
+    expect(screen.getByText("Loading recipients…")).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(249); });
     expect(mocks.search).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
 
     expect(mocks.search).toHaveBeenCalledWith("ot");
-    expect(screen.getByText("2 members found")).toBeInTheDocument();
+    expect(screen.getByText("2 recipients available")).toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(2);
     const staffOption = screen.getByRole("option", { name: /Mod Person.*@moderator.*moderator/ });
     expect(staffOption).toBeInTheDocument();
     expect(staffOption.querySelector("img")).toHaveAttribute("src");
+  });
+
+  it("opens member suggestions on empty focus with Staff Mailbox first and supports keyboard selection", async () => {
+    vi.useFakeTimers();
+    const staffMailbox = { kind: "staff-mailbox" as const, id: "staff-mailbox" as const, displayName: "Staff Mailbox" as const, username: "staff" as const, imageUrl: null, role: "STAFF_MAILBOX" as const };
+    mocks.search.mockResolvedValue([staffMailbox, recipient, moderator]);
+    const view = render(<MailComposer role="MEMBER" uploadsEnabled={false} />);
+    const input = screen.getByRole("combobox", { name: "To" });
+    fireEvent.focus(input);
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(mocks.search).toHaveBeenCalledWith("");
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveAccessibleName(/Staff Mailbox.*Shared inbox/);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText("Staff Mailbox")).toBeInTheDocument();
+    expect(view.container.querySelector('input[name="staffMailbox"]')).toHaveValue("true");
+    expect(view.container.querySelector('input[name="recipientId"]')).toBeNull();
+  });
+
+  it("restores a Staff Mailbox draft and preserves its destination while autosaving", async () => {
+    vi.useFakeTimers();
+    render(<MailComposer role="MEMBER" uploadsEnabled={false} draft={{ id: "cm000000000000000000000002", threadId: null, subject: "Help", body: "Original", staffMailbox: true, recipients: [] }} />);
+    expect(screen.getByText("Staff Mailbox")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Mail body"), { target: { value: "Updated" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    const data = mocks.save.mock.calls.at(-1)?.[0] as FormData;
+    expect(data.get("staffMailbox")).toBe("true");
+    expect(data.getAll("recipientId")).toEqual([]);
   });
 
   it("reports empty and failed searches without leaving stale results visible", async () => {
@@ -95,18 +125,18 @@ describe("MailComposer", () => {
     fireEvent.change(input, { target: { value: "new" } });
     await act(async () => { await vi.advanceTimersByTimeAsync(250); });
     await act(async () => { newSearch.resolve([]); await Promise.resolve(); });
-    expect(screen.getByText("No members found.")).toBeInTheDocument();
+    expect(screen.getByText("No recipients found.")).toBeInTheDocument();
 
     await act(async () => { oldSearch.resolve([recipient]); await Promise.resolve(); });
     expect(screen.queryByRole("option", { name: /Other/ })).not.toBeInTheDocument();
-    expect(screen.getByText("No members found.")).toBeInTheDocument();
+    expect(screen.getByText("No recipients found.")).toBeInTheDocument();
 
     const failedSearch = deferred<Array<typeof recipient>>();
     mocks.search.mockReturnValueOnce(failedSearch.promise);
     fireEvent.change(input, { target: { value: "fail" } });
     await act(async () => { await vi.advanceTimersByTimeAsync(250); });
     await act(async () => { failedSearch.reject(new Error("offline")); await Promise.resolve(); });
-    expect(screen.getByText("We couldn’t load members. Try your search again.")).toBeInTheDocument();
+    expect(screen.getByText("We couldn’t load recipients. Try again.")).toBeInTheDocument();
   });
 
   it("supports keyboard navigation, selection, and Escape while retaining input focus", async () => {
@@ -132,7 +162,7 @@ describe("MailComposer", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(250); });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("listbox", { name: "Matching members" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Recipient suggestions" })).not.toBeInTheDocument();
     fireEvent.focus(input);
     expect(input).toHaveAttribute("aria-expanded", "true");
   });
@@ -156,7 +186,7 @@ describe("MailComposer", () => {
   });
 
   it("saves and closes or discards an existing draft", async () => {
-    const draft = { id: "cm000000000000000000000002", threadId: null, subject: "Saved subject", body: "Saved body", recipients: [recipient] };
+    const draft = { id: "cm000000000000000000000002", threadId: null, subject: "Saved subject", body: "Saved body", staffMailbox: false, recipients: [recipient] };
     const view = render(<MailComposer role="MEMBER" draft={draft} uploadsEnabled={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Save & close" }));
     await act(async () => { await Promise.resolve(); });

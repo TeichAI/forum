@@ -17,6 +17,7 @@ import {
 import { canComment, canStartDiscussion } from "@/lib/space-posting-permissions";
 import { parseMentions, safeReturnPath, threadSlug } from "@/lib/utils";
 import { inaccessible, publicReplyWhere, publicThreadWhere } from "@/lib/access";
+import { canAccessMailEntry } from "@/lib/mail-access";
 import { resolveCanonicalTags } from "@/lib/tags";
 import { withSerializableRetry } from "@/lib/transactions";
 
@@ -313,7 +314,7 @@ export async function reportContent(formData: FormData) {
       ? Boolean(await db.reply.findFirst({ where: { id: targetId, ...publicReplyWhere }, select: { id: true } }))
       : targetType === "USER"
         ? Boolean(await db.user.findFirst({ where: { id: targetId, status: "ACTIVE" }, select: { id: true } }))
-        : Boolean(await db.mailEntry.findUnique({ where: { id: targetId, thread: { participants: { some: { userId: user.id, removedAt: null } } } }, select: { id: true } }));
+        : await canAccessMailEntry(user, targetId);
   if (!targetExists) throw new Error("The reported content does not exist or is not visible to you");
   await withSerializableRetry(async (tx) => {
     const reportCase = await tx.moderationCase.findFirst({

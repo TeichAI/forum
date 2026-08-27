@@ -6,6 +6,7 @@ import { z } from "zod";
 import { claimAttachments } from "@/lib/attachments";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getMailThreadAccess } from "@/lib/mail-access";
 import {
   consumeRateLimit,
   consumeMutationRateLimit,
@@ -41,6 +42,39 @@ function recipientIds(formData: FormData) {
   return [...new Set(formData.getAll("recipientId").map(String).filter(Boolean))];
 }
 
+function staffMailboxTarget(formData: FormData) {
+  return formData.get("staffMailbox") === "true";
+}
+
+export type MailUserRecipient = {
+  kind: "user";
+  id: string;
+  displayName: string;
+  username: string;
+  imageUrl: string | null;
+  role: string;
+};
+
+export type StaffMailboxRecipient = {
+  kind: "staff-mailbox";
+  id: "staff-mailbox";
+  displayName: "Staff Mailbox";
+  username: "staff";
+  imageUrl: null;
+  role: "STAFF_MAILBOX";
+};
+
+export type MailRecipientOption = MailUserRecipient | StaffMailboxRecipient;
+
+const STAFF_MAILBOX_RECIPIENT: StaffMailboxRecipient = {
+  kind: "staff-mailbox",
+  id: "staff-mailbox",
+  displayName: "Staff Mailbox",
+  username: "staff",
+  imageUrl: null,
+  role: "STAFF_MAILBOX",
+};
+
 async function availableRecipients(sender: { id: string; role: string }, ids: string[]) {
   const max = sender.role === "MODERATOR" || sender.role === "ADMIN" ? 25 : 1;
   if (ids.length < 1 || ids.length > max || (sender.role === "MEMBER" && ids.length !== 1)) {
@@ -69,7 +103,7 @@ async function availableRecipients(sender: { id: string; role: string }, ids: st
 export async function searchMailRecipients(query: string) {
   const user = await requireUser();
   const q = z.string().trim().max(80).catch("").parse(query);
-  if (q.length < 2) return [];
+  if (q.length === 1) return [];
   const limited = await consumeRateLimit({ kind: "user", value: user.clerkId }, [RATE_LIMIT_POLICIES.searchUser]);
   if (!limited.allowed) return [];
   const blocked = await db.block.findMany({
@@ -77,7 +111,18 @@ export async function searchMailRecipients(query: string) {
     select: { blockerId: true, blockedId: true },
   });
   const excluded = new Set([user.id, ...blocked.flatMap((item) => [item.blockerId, item.blockedId])]);
-  return db.user.findMany({
+  if (!q) {
+    if (user.role !== "MEMBER") return [];
+    const follows = await db.follow.findMany({
+      where: { followerId: user.id, followingId: { notIn: [...excluded] }, following: { status: "ACTIVE" } },
+      include: { following: { select: { id: true, displayName: true, username: true, imageUrl: true, role: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    });
+    return [STAFF_MAILBOX_RECIPIENT, ...follows.map(({ following }) => ({ kind: "user" as const, ...following }))];
+  }
+  if (q.length < 2) return [];
+  const users = await db.user.findMany({
     where: {
       id: { notIn: [...excluded] },
       status: "ACTIVE",
@@ -87,6 +132,8 @@ export async function searchMailRecipients(query: string) {
     orderBy: [{ displayName: "asc" }, { username: "asc" }],
     take: 8,
   });
+  const staffMatch = user.role === "MEMBER" && "staff mailbox".includes(q.toLowerCase());
+  return [...(staffMatch ? [STAFF_MAILBOX_RECIPIENT] : []), ...users.map((recipient) => ({ kind: "user" as const, ...recipient }))];
 }
 
 export async function saveMailDraft(formData: FormData): Promise<MailActionState> {
@@ -99,11 +146,12 @@ export async function saveMailDraft(formData: FormData): Promise<MailActionState
   const subject = z.string().max(160).catch("").parse(formData.get("subject") ?? "");
   const body = draftTextSchema.parse(formData.get("body") ?? "");
   const ids = recipientIds(formData);
+  const staffMailbox = staffMailboxTarget(formData);
   try {
+    if (staffMailbox && (user.role !== "MEMBER" || ids.length)) throw new Error("Staff Mailbox must be the only recipient and is available to members only.");
     if (ids.length) await availableRecipients(user, ids);
     if (threadId.data) {
-      const participant = await db.mailParticipant.findUnique({ where: { threadId_userId: { threadId: threadId.data, userId: user.id } } });
-      if (!participant || participant.removedAt) return { status: "error", message: "This mail thread is unavailable." };
+      if (!await getMailThreadAccess(user, threadId.data)) return { status: "error", message: "This mail thread is unavailable." };
     }
     const saved = await db.$transaction(async (tx) => {
       let result;
@@ -115,13 +163,14 @@ export async function saveMailDraft(formData: FormData): Promise<MailActionState
           data: {
             subject,
             body,
+            staffMailbox,
             threadId: threadId.data,
             recipients: { deleteMany: {}, create: ids.map((recipientId) => ({ recipientId })) },
           },
         });
       } else {
         result = await tx.mailDraft.create({
-          data: { ownerId: user.id, threadId: threadId.data, subject, body, recipients: { create: ids.map((recipientId) => ({ recipientId })) } },
+          data: { ownerId: user.id, threadId: threadId.data, subject, body, staffMailbox, recipients: { create: ids.map((recipientId) => ({ recipientId })) } },
         });
       }
       await claimAttachments(body, user.id, "MAIL_DRAFT", result.id, result.id, tx);
@@ -153,6 +202,7 @@ export async function deleteMailDraft(formData: FormData): Promise<MailActionSta
 export async function sendMail(formData: FormData): Promise<MailActionState | never> {
   const user = await requireUser();
   const ids = recipientIds(formData);
+  const staffMailbox = staffMailboxTarget(formData);
   const subject = subjectSchema.safeParse(formData.get("subject"));
   const body = bodySchema.safeParse(formData.get("body"));
   if (!subject.success || !body.success) {
@@ -162,13 +212,18 @@ export async function sendMail(formData: FormData): Promise<MailActionState | ne
       fieldErrors: { subject: subject.error?.issues[0]?.message, body: body.error?.issues[0]?.message },
     };
   }
-  let recipients;
+  let recipients: Awaited<ReturnType<typeof availableRecipients>>;
   try {
-    recipients = await availableRecipients(user, ids);
+    if (staffMailbox) {
+      if (user.role !== "MEMBER" || ids.length) throw new Error("Staff Mailbox must be the only recipient and is available to members only.");
+      recipients = [];
+    } else {
+      recipients = await availableRecipients(user, ids);
+    }
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Choose valid recipients.", fieldErrors: { recipients: "Check the recipients." } };
   }
-  const rate = await consumeMutationRateLimit({ kind: "user", value: user.clerkId }, mailSendPolicies(user, recipients.length));
+  const rate = await consumeMutationRateLimit({ kind: "user", value: user.clerkId }, mailSendPolicies(user, Math.max(recipients.length, 1)));
   if (!rate.allowed) return rateLimitedActionState(rate);
   const rawDraftId = formData.get("draftId");
   const draftId = rawDraftId ? idSchema.parse(rawDraftId) : undefined;
@@ -178,6 +233,19 @@ export async function sendMail(formData: FormData): Promise<MailActionState | ne
   const now = new Date();
   const created = await db.$transaction(async (tx) => {
     const sent = [];
+    if (staffMailbox) {
+      const thread = await tx.mailThread.create({
+        data: {
+          subject: subject.data,
+          lastActivityAt: now,
+          entries: { create: { authorId: user.id, body: body.data, createdAt: now } },
+          participants: { create: { userId: user.id, location: "INBOX", lastReadAt: now } },
+          staffMailbox: { create: { location: "INBOX" } },
+        },
+        include: { entries: { select: { id: true } } },
+      });
+      sent.push({ threadId: thread.id, entryId: thread.entries[0]!.id });
+    }
     for (const recipient of recipients) {
       const thread = await tx.mailThread.create({
         data: {
@@ -211,21 +279,38 @@ export async function replyToMail(formData: FormData): Promise<MailActionState> 
   if (!threadId.success || !body.success) return { status: "error", message: body.error?.issues[0]?.message ?? "This mail thread is invalid." };
   const rate = await consumeUserMutation(user, RATE_LIMIT_POLICIES.mail, [mailThreadPolicy(threadId.data)]);
   if (!rate.allowed) return rateLimitedActionState(rate);
-  const participant = await db.mailParticipant.findUnique({
-    where: { threadId_userId: { threadId: threadId.data, userId: user.id } },
-    include: { thread: { include: { participants: { include: { user: { select: { id: true, status: true } } } } } } },
+  const access = await getMailThreadAccess(user, threadId.data);
+  if (!access) return { status: "error", message: "This mail thread is unavailable." };
+  const thread = await db.mailThread.findUnique({
+    where: { id: threadId.data },
+    include: { staffMailbox: true, participants: { include: { user: { select: { id: true, status: true } } } } },
   });
-  if (!participant || participant.removedAt) return { status: "error", message: "This mail thread is unavailable." };
-  const recipient = participant.thread.participants.find((item) => item.userId !== user.id)?.user;
+  if (!thread) return { status: "error", message: "This mail thread is unavailable." };
+  const collective = Boolean(thread.staffMailbox);
+  const recipient = collective
+    ? thread.participants[0]?.user
+    : thread.participants.find((item) => item.userId !== user.id)?.user;
   if (!recipient || recipient.status !== "ACTIVE") return { status: "error", message: "The recipient is unavailable." };
-  const blocked = await db.block.findFirst({ where: { OR: [{ blockerId: user.id, blockedId: recipient.id }, { blockerId: recipient.id, blockedId: user.id }] } });
-  if (blocked) return { status: "error", message: "Mail is unavailable for this member." };
+  if (!collective) {
+    const blocked = await db.block.findFirst({ where: { OR: [{ blockerId: user.id, blockedId: recipient.id }, { blockerId: recipient.id, blockedId: user.id }] } });
+    if (blocked) return { status: "error", message: "Mail is unavailable for this member." };
+  }
   const now = new Date();
   await db.$transaction(async (tx) => {
     const created = await tx.mailEntry.create({ data: { threadId: threadId.data, authorId: user.id, body: body.data, createdAt: now } });
     await tx.mailThread.update({ where: { id: threadId.data }, data: { lastActivityAt: now } });
-    await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: user.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false, lastReadAt: now } });
-    await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: recipient.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false } });
+    if (collective) {
+      if (access.kind === "staff") {
+        await tx.staffMailboxThread.update({ where: { threadId: threadId.data }, data: { location: "INBOX", removedAt: null, forcedUnread: false, lastReadAt: now } });
+        await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: recipient.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false } });
+      } else {
+        await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: user.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false, lastReadAt: now } });
+        await tx.staffMailboxThread.update({ where: { threadId: threadId.data }, data: { location: "INBOX", removedAt: null, forcedUnread: false } });
+      }
+    } else {
+      await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: user.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false, lastReadAt: now } });
+      await tx.mailParticipant.update({ where: { threadId_userId: { threadId: threadId.data, userId: recipient.id } }, data: { location: "INBOX", removedAt: null, forcedUnread: false } });
+    }
     await claimAttachments(body.data, user.id, "MAIL_ENTRY", created.id, undefined, tx);
     return created;
   });
@@ -233,9 +318,8 @@ export async function replyToMail(formData: FormData): Promise<MailActionState> 
   return { status: "success", message: "Reply sent." };
 }
 
-async function ownedParticipant(threadId: string, userId: string) {
-  const participant = await db.mailParticipant.findUnique({ where: { threadId_userId: { threadId, userId } } });
-  return participant?.removedAt ? null : participant;
+async function ownedMailboxState(threadId: string, user: Awaited<ReturnType<typeof requireUser>>) {
+  return getMailThreadAccess(user, threadId);
 }
 
 export async function setMailLocation(formData: FormData): Promise<MailActionState> {
@@ -243,8 +327,10 @@ export async function setMailLocation(formData: FormData): Promise<MailActionSta
   const limited = await mailLimit(user);
   if (limited) return limited;
   const parsed = z.object({ threadId: idSchema, location: z.enum(["INBOX", "ARCHIVE", "TRASH"]) }).safeParse({ threadId: formData.get("threadId"), location: formData.get("location") });
-  if (!parsed.success || !await ownedParticipant(parsed.data?.threadId ?? "", user.id)) return { status: "error", message: "This mail thread is unavailable." };
-  await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data.threadId, userId: user.id } }, data: { location: parsed.data.location } });
+  const access = parsed.success ? await ownedMailboxState(parsed.data.threadId, user) : null;
+  if (!parsed.success || !access) return { status: "error", message: "This mail thread is unavailable." };
+  if (access.kind === "staff") await db.staffMailboxThread.update({ where: { threadId: parsed.data.threadId }, data: { location: parsed.data.location } });
+  else await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data.threadId, userId: user.id } }, data: { location: parsed.data.location } });
   refreshMail(parsed.data.threadId);
   return { status: "success", message: parsed.data.location === "ARCHIVE" ? "Mail archived." : parsed.data.location === "TRASH" ? "Mail moved to trash." : "Mail restored to inbox." };
 }
@@ -254,9 +340,10 @@ export async function toggleMailStar(formData: FormData): Promise<MailActionStat
   const limited = await mailLimit(user);
   if (limited) return limited;
   const parsed = idSchema.safeParse(formData.get("threadId"));
-  const participant = parsed.success ? await ownedParticipant(parsed.data, user.id) : null;
-  if (!parsed.success || !participant) return { status: "error", message: "This mail thread is unavailable." };
-  await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data, userId: user.id } }, data: { starred: !participant.starred } });
+  const access = parsed.success ? await ownedMailboxState(parsed.data, user) : null;
+  if (!parsed.success || !access) return { status: "error", message: "This mail thread is unavailable." };
+  if (access.kind === "staff") await db.staffMailboxThread.update({ where: { threadId: parsed.data }, data: { starred: !access.state.starred } });
+  else await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data, userId: user.id } }, data: { starred: !access.state.starred } });
   refreshMail(parsed.data);
   return { status: "success" };
 }
@@ -266,9 +353,12 @@ export async function setMailReadState(formData: FormData): Promise<MailActionSt
   const limited = await mailLimit(user);
   if (limited) return limited;
   const parsed = z.object({ threadId: idSchema, unread: z.enum(["true", "false"]).default("false") }).safeParse({ threadId: formData.get("threadId"), unread: formData.get("unread") ?? "false" });
-  if (!parsed.success || !await ownedParticipant(parsed.data?.threadId ?? "", user.id)) return { status: "error", message: "This mail thread is unavailable." };
+  const access = parsed.success ? await ownedMailboxState(parsed.data.threadId, user) : null;
+  if (!parsed.success || !access) return { status: "error", message: "This mail thread is unavailable." };
   const unread = parsed.data.unread === "true";
-  await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data.threadId, userId: user.id } }, data: { forcedUnread: unread, lastReadAt: unread ? undefined : new Date() } });
+  const data = { forcedUnread: unread, lastReadAt: unread ? undefined : new Date() };
+  if (access.kind === "staff") await db.staffMailboxThread.update({ where: { threadId: parsed.data.threadId }, data });
+  else await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data.threadId, userId: user.id } }, data });
   refreshMail(parsed.data.threadId);
   return { status: "success" };
 }
@@ -278,10 +368,11 @@ export async function removeMailboxCopy(formData: FormData): Promise<MailActionS
   const limited = await mailLimit(user);
   if (limited) return limited;
   const parsed = idSchema.safeParse(formData.get("threadId"));
-  const participant = parsed.success ? await ownedParticipant(parsed.data, user.id) : null;
-  if (!parsed.success || !participant) return { status: "error", message: "This mail thread is unavailable." };
-  if (participant.location !== "TRASH") return { status: "error", message: "Move mail to Trash before deleting it forever." };
-  await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data, userId: user.id } }, data: { removedAt: new Date() } });
+  const access = parsed.success ? await ownedMailboxState(parsed.data, user) : null;
+  if (!parsed.success || !access) return { status: "error", message: "This mail thread is unavailable." };
+  if (access.state.location !== "TRASH") return { status: "error", message: "Move mail to Trash before deleting it forever." };
+  if (access.kind === "staff") await db.staffMailboxThread.update({ where: { threadId: parsed.data }, data: { removedAt: new Date() } });
+  else await db.mailParticipant.update({ where: { threadId_userId: { threadId: parsed.data, userId: user.id } }, data: { removedAt: new Date() } });
   refreshMail(parsed.data);
   return { status: "success", message: "Your mailbox copy was removed." };
 }

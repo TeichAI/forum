@@ -6,10 +6,10 @@ describe("Mail migration result", () => {
   it("removes legacy private-content tables while preserving legacy moderation metadata and enabling Mail", async () => {
     const tables = await db.$queryRaw<Array<{ name: string }>>`
       SELECT table_name AS name FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_name IN ('Conversation', 'Message', 'MailThread', 'MailEntry')
+      WHERE table_schema = 'public' AND table_name IN ('Conversation', 'Message', 'MailThread', 'MailEntry', 'StaffMailboxThread')
       ORDER BY table_name
     `;
-    expect(tables.map((item) => item.name)).toEqual(["MailEntry", "MailThread"]);
+    expect(tables.map((item) => item.name)).toEqual(["MailEntry", "MailThread", "StaffMailboxThread"]);
 
     const [author, moderator] = await Promise.all([createTestUser(), createTestUser({ role: "MODERATOR" })]);
     const reportCase = await db.moderationCase.create({ data: { targetType: "LEGACY_MAIL", targetId: "removed-private-content" } });

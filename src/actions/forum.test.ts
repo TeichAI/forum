@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
     requireModerator: vi.fn(),
     uploadsEnabled: vi.fn(),
     consumeUserMutation: vi.fn(),
+    canAccessMailEntry: vi.fn(),
     revalidatePath: vi.fn(),
     redirect: vi.fn(),
   };
@@ -42,6 +43,7 @@ vi.mock("@/lib/auth", () => ({
   requireModerator: mocks.requireModerator,
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
+vi.mock("@/lib/mail-access", () => ({ canAccessMailEntry: mocks.canAccessMailEntry }));
 vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: mocks.uploadsEnabled }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
@@ -83,6 +85,7 @@ beforeEach(() => {
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.uploadsEnabled.mockReturnValue(false);
   mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
+  mocks.canAccessMailEntry.mockResolvedValue(true);
   mocks.db.moderationCase.findFirst.mockResolvedValue(null);
   mocks.db.moderationCase.create.mockResolvedValue({ id: "case-1" });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
@@ -418,7 +421,7 @@ describe("reports, blocking, and notifications", () => {
   it.each([
     ["THREAD", "thread"], ["REPLY", "reply"], ["USER", "user"], ["MAIL_ENTRY", "mailEntry"],
   ] as const)("creates or reopens a %s report after checking visibility", async (targetType, modelName) => {
-    mocks.db[modelName].findUnique.mockResolvedValue({ id: ids.thread });
+    if (modelName !== "mailEntry") mocks.db[modelName].findUnique.mockResolvedValue({ id: ids.thread });
     await reportContent(form({ targetType, targetId: ids.thread, reason: "Spam", details: "Repeated", returnTo: "/safe" }));
     expect(mocks.db.report.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { reporterId_targetType_targetId: { reporterId: ids.user, targetType, targetId: ids.thread } },
@@ -428,7 +431,7 @@ describe("reports, blocking, and notifications", () => {
   });
 
   it("rejects reports for invisible targets", async () => {
-    mocks.db.mailEntry.findUnique.mockResolvedValue(null);
+    mocks.canAccessMailEntry.mockResolvedValue(false);
     await expect(reportContent(form({ targetType: "MAIL_ENTRY", targetId: ids.mailEntry, reason: "Spam" }))).rejects.toThrow("does not exist");
   });
 

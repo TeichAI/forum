@@ -3,20 +3,22 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Bold, ImagePlus, Italic, Link as LinkIcon, List, ListOrdered, LoaderCircle, Quote, X } from "lucide-react";
-import { deleteMailDraft, saveMailDraft, searchMailRecipients, sendMail, type MailActionState } from "@/actions/mail";
+import { deleteMailDraft, saveMailDraft, searchMailRecipients, sendMail, type MailActionState, type MailRecipientOption, type MailUserRecipient } from "@/actions/mail";
 import { Avatar } from "@/components/ui/avatar";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { UploadButton } from "@/lib/uploadthing";
 
-type Recipient = { id: string; displayName: string; username: string; imageUrl: string | null; role: string };
-type Draft = { id: string; threadId: string | null; subject: string; body: string; recipients: Recipient[] };
+type Recipient = MailRecipientOption;
+type Draft = { id: string; threadId: string | null; subject: string; body: string; staffMailbox: boolean; recipients: MailUserRecipient[] };
+
+const staffMailboxRecipient: Recipient = { kind: "staff-mailbox", id: "staff-mailbox", displayName: "Staff Mailbox", username: "staff", imageUrl: null, role: "STAFF_MAILBOX" };
 
 const idle: MailActionState = { status: "idle" };
 
-export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabled }: { role: string; initialRecipients?: Recipient[]; draft?: Draft; uploadsEnabled: boolean }) {
+export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabled }: { role: string; initialRecipients?: MailUserRecipient[]; draft?: Draft; uploadsEnabled: boolean }) {
   const router = useRouter();
   const maxRecipients = role === "MODERATOR" || role === "ADMIN" ? 25 : 1;
-  const [recipients, setRecipients] = useState(draft?.recipients ?? initialRecipients);
+  const [recipients, setRecipients] = useState<Recipient[]>(draft?.staffMailbox ? [staffMailboxRecipient] : draft?.recipients ?? initialRecipients);
   const [subject, setSubject] = useState(draft?.subject ?? "");
   const [body, setBody] = useState(draft?.body ?? "");
   const [draftId, setDraftId] = useState(draft?.id);
@@ -43,11 +45,12 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
   const current = JSON.stringify({ recipients: recipients.map((item) => item.id), subject, body });
   const canSearch = recipients.length < maxRecipients;
   const normalizedQuery = query.trim();
-  const showSearch = canSearch && searchOpen && normalizedQuery.length >= 2;
+  const searchableQuery = normalizedQuery.length === 0 || normalizedQuery.length >= 2;
+  const showSearch = canSearch && searchOpen && searchableQuery;
 
   useEffect(() => {
     const request = ++searchRequest.current;
-    if (normalizedQuery.length < 2 || !canSearch) return;
+    if (!searchOpen || !searchableQuery || !canSearch) return;
     const timer = window.setTimeout(() => {
       void searchMailRecipients(normalizedQuery)
         .then((items) => {
@@ -62,7 +65,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
         });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [normalizedQuery, recipients, canSearch]);
+  }, [normalizedQuery, recipients, canSearch, searchOpen, searchableQuery]);
 
   useEffect(() => {
     if (current === lastSaved.current || (!subject && !body && !recipients.length)) return;
@@ -83,7 +86,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
     if (draft?.threadId) data.set("threadId", draft.threadId);
     data.set("subject", values.subject);
     data.set("body", values.body);
-    values.recipients.forEach((recipient) => data.append("recipientId", recipient.id));
+    values.recipients.forEach((recipient) => recipient.kind === "staff-mailbox" ? data.set("staffMailbox", "true") : data.append("recipientId", recipient.id));
     return data;
   }
 
@@ -157,7 +160,8 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
   }
 
   function updateRecipientQuery(value: string) {
-    const searchable = value.trim().length >= 2;
+    const length = value.trim().length;
+    const searchable = length === 0 || length >= 2;
     searchRequest.current += 1;
     setQuery(value);
     setResults([]);
@@ -170,7 +174,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
     searchRequest.current += 1;
     setRecipients((items) => items.filter((item) => item.id !== recipientId));
     setResults([]);
-    setSearchState(normalizedQuery.length >= 2 ? "loading" : "idle");
+    setSearchState(normalizedQuery.length === 0 || normalizedQuery.length >= 2 ? "loading" : "idle");
     setActiveResult(-1);
   }
 
@@ -197,7 +201,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
 
   return <form action={sendAction} className="mail-compose-form" aria-busy={sending}>
     {draftId && <input type="hidden" name="draftId" value={draftId} />}
-    {recipients.map((recipient) => <input type="hidden" name="recipientId" value={recipient.id} key={recipient.id} />)}
+    {recipients.map((recipient) => recipient.kind === "staff-mailbox" ? <input type="hidden" name="staffMailbox" value="true" key={recipient.id} /> : <input type="hidden" name="recipientId" value={recipient.id} key={recipient.id} />)}
     <header className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6" style={{ borderColor: "var(--line)" }}><div><div className="eyebrow">Teich Mail</div><h1 className="mt-1 text-xl font-black">New mail</h1></div><button type="button" className="button button-ghost !h-9 !w-9 !p-0" onClick={() => router.push("/mail")} aria-label="Close compose"><X size={17} /></button></header>
     <div
       className="relative border-b px-4 py-3 sm:px-6"
@@ -211,7 +215,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
     >
       <label className="label" htmlFor="mail-recipient-search">To</label>
       <div className="flex flex-wrap items-center gap-2">
-        {recipients.map((recipient) => <span className="pill pill-strong" key={recipient.id}>{recipient.displayName} <span className="muted">@{recipient.username}</span><button type="button" onClick={() => removeRecipient(recipient.id)} aria-label={`Remove ${recipient.displayName}`}><X size={12} /></button></span>)}
+        {recipients.map((recipient) => <span className="pill pill-strong" key={recipient.id}>{recipient.displayName} {recipient.kind === "user" && <span className="muted">@{recipient.username}</span>}<button type="button" onClick={() => removeRecipient(recipient.id)} aria-label={`Remove ${recipient.displayName}`}><X size={12} /></button></span>)}
         {canSearch && <input
           ref={recipientInput}
           id="mail-recipient-search"
@@ -219,7 +223,10 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
           value={query}
           onChange={(event) => updateRecipientQuery(event.target.value)}
           onFocus={() => {
-            if (normalizedQuery.length >= 2) setSearchOpen(true);
+            if (searchableQuery) {
+              setSearchState("loading");
+              setSearchOpen(true);
+            }
           }}
           onKeyDown={handleRecipientKeyDown}
           placeholder={recipients.length ? "Add another recipient" : "Search name or @username"}
@@ -237,11 +244,11 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
       {maxRecipients > 1 && <p className="hint">Staff BCC: each of up to 25 recipients receives an independent private thread.</p>}
       {showSearch && <div className="card absolute left-4 right-4 z-30 mt-2 max-h-80 overflow-hidden shadow-xl sm:left-6 sm:right-auto sm:w-[28rem]">
         <p className="flex min-h-10 items-center gap-2 border-b px-4 py-2 text-xs font-semibold muted" style={{ borderColor: "var(--line)" }} role="status" aria-live="polite">
-          {searchState === "loading" && <><LoaderCircle className="animate-spin" size={14} aria-hidden="true" />Searching members…</>}
-          {searchState === "error" && "We couldn’t load members. Try your search again."}
-          {searchState === "success" && (results.length ? `${results.length} ${results.length === 1 ? "member" : "members"} found` : "No members found.")}
+          {searchState === "loading" && <><LoaderCircle className="animate-spin" size={14} aria-hidden="true" />Loading recipients…</>}
+          {searchState === "error" && "We couldn’t load recipients. Try again."}
+          {searchState === "success" && (results.length ? `${results.length} ${results.length === 1 ? "recipient" : "recipients"} available` : "No recipients found.")}
         </p>
-        <div id="mail-recipient-results" role="listbox" aria-label="Matching members" className="max-h-64 overflow-y-auto overscroll-contain">
+        <div id="mail-recipient-results" role="listbox" aria-label="Recipient suggestions" className="max-h-64 overflow-y-auto overscroll-contain">
           {results.map((result, index) => <button
             id={`mail-recipient-option-${result.id}`}
             className="flex w-full items-center gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-[var(--surface-soft)] focus-visible:outline-none"
@@ -255,7 +262,7 @@ export function MailComposer({ role, initialRecipients = [], draft, uploadsEnabl
             onClick={() => selectRecipient(result)}
           >
             <Avatar src={result.imageUrl} name={result.displayName} className="!h-9 !w-9 shrink-0" />
-            <span className="min-w-0 flex-1"><strong className="block truncate">{result.displayName}</strong><span className="block truncate text-xs muted">@{result.username}</span></span>
+            <span className="min-w-0 flex-1"><strong className="block truncate">{result.displayName}</strong><span className="block truncate text-xs muted">{result.kind === "staff-mailbox" ? "Shared inbox for moderators and administrators" : `@${result.username}`}</span></span>
             {(result.role === "MODERATOR" || result.role === "ADMIN") && <UserRoleBadge role={result.role} />}
           </button>)}
         </div>
