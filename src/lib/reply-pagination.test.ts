@@ -74,3 +74,43 @@ it("returns an empty branch page when the requested root is inaccessible", async
   });
   expect(mocks.queryRaw).not.toHaveBeenCalled();
 });
+
+it("filters non-published replies for regular users", async () => {
+  mocks.findMany.mockResolvedValueOnce([{ id: "root-1", createdAt: now }]).mockResolvedValueOnce([]);
+  mocks.queryRaw.mockResolvedValue([{ id: "reply-1" }]);
+
+  await listReplyBranches({ threadId: "thread", viewerIsStaff: false });
+
+  expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+    where: expect.objectContaining({ status: "PUBLISHED" }),
+  }));
+});
+
+it("skips status filter for staff viewers", async () => {
+  mocks.findMany.mockResolvedValueOnce([{ id: "root-1", createdAt: now }]).mockResolvedValueOnce([]);
+  mocks.queryRaw.mockResolvedValue([{ id: "reply-1" }]);
+
+  await listReplyBranches({ threadId: "thread", viewerIsStaff: true });
+
+  const rootQuery = mocks.findMany.mock.calls[0][0];
+  expect(rootQuery.where).not.toHaveProperty("status");
+});
+
+it("applies status filter to branch root lookup for non-staff", async () => {
+  mocks.findFirst.mockResolvedValue(null);
+
+  await listReplyBranches({ threadId: "thread", branchId: "root", viewerIsStaff: false });
+
+  expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    where: expect.objectContaining({ status: "PUBLISHED" }),
+  }));
+});
+
+it("omits status filter from branch root lookup for staff", async () => {
+  mocks.findFirst.mockResolvedValue(null);
+
+  await listReplyBranches({ threadId: "thread", branchId: "root", viewerIsStaff: true });
+
+  const query = mocks.findFirst.mock.calls[0][0];
+  expect(query.where).not.toHaveProperty("status");
+});

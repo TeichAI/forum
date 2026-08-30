@@ -12,6 +12,7 @@ type RootCursor = { createdAt: string; id: string };
 export async function listReplyBranches(options: {
   threadId: string;
   viewerId?: string;
+  viewerIsStaff?: boolean;
   cursor?: string;
   branchId?: string;
   branchPage?: number;
@@ -21,9 +22,11 @@ export async function listReplyBranches(options: {
   let roots: Array<{ id: string; createdAt: Date }>;
   let nextCursor: string | null = null;
 
+  const statusFilter = options.viewerIsStaff ? {} : { status: "PUBLISHED" as const };
+
   if (options.branchId) {
     const root = await db.reply.findFirst({
-      where: { id: options.branchId, threadId: options.threadId, parentReplyId: null },
+      where: { id: options.branchId, threadId: options.threadId, parentReplyId: null, ...statusFilter },
       select: { id: true, createdAt: true },
     });
     roots = root ? [root] : [];
@@ -34,6 +37,7 @@ export async function listReplyBranches(options: {
       where: {
         threadId: options.threadId,
         parentReplyId: null,
+        ...statusFilter,
         AND: cursorTime && cursor?.id ? { OR: [{ createdAt: { gt: cursorTime } }, { createdAt: cursorTime, id: { gt: cursor.id } }] } : undefined,
       },
       select: { id: true, createdAt: true },
@@ -47,22 +51,41 @@ export async function listReplyBranches(options: {
 
   const branchRows = await Promise.all(roots.map(async (root) => {
     const offset = options.branchId ? requestedPage * REPLY_BRANCH_PAGE_SIZE : 0;
-    const rows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      WITH RECURSIVE branch AS (
-        SELECT reply."id", reply."parentReplyId", ARRAY[reply."id"]::text[] AS path
-        FROM "Reply" reply
-        WHERE reply."id" = ${root.id} AND reply."threadId" = ${options.threadId}
-        UNION ALL
-        SELECT child."id", child."parentReplyId", branch.path || child."id"
-        FROM "Reply" child
-        JOIN branch ON child."parentReplyId" = branch."id"
-        WHERE child."threadId" = ${options.threadId} AND NOT child."id" = ANY(branch.path)
-      )
-      SELECT "id" FROM branch
-      ORDER BY path
-      OFFSET ${offset}
-      LIMIT ${REPLY_BRANCH_PAGE_SIZE + 1}
-    `);
+    const rows = options.viewerIsStaff
+      ? await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          WITH RECURSIVE branch AS (
+            SELECT reply."id", reply."parentReplyId", ARRAY[reply."id"]::text[] AS path
+            FROM "Reply" reply
+            WHERE reply."id" = ${root.id} AND reply."threadId" = ${options.threadId}
+            UNION ALL
+            SELECT child."id", child."parentReplyId", branch.path || child."id"
+            FROM "Reply" child
+            JOIN branch ON child."parentReplyId" = branch."id"
+            WHERE child."threadId" = ${options.threadId} AND NOT child."id" = ANY(branch.path)
+          )
+          SELECT "id" FROM branch
+          ORDER BY path
+          OFFSET ${offset}
+          LIMIT ${REPLY_BRANCH_PAGE_SIZE + 1}
+        `)
+      : await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          WITH RECURSIVE branch AS (
+            SELECT reply."id", reply."parentReplyId", ARRAY[reply."id"]::text[] AS path
+            FROM "Reply" reply
+            WHERE reply."id" = ${root.id} AND reply."threadId" = ${options.threadId}
+              AND reply."status" = 'PUBLISHED'
+            UNION ALL
+            SELECT child."id", child."parentReplyId", branch.path || child."id"
+            FROM "Reply" child
+            JOIN branch ON child."parentReplyId" = branch."id"
+            WHERE child."threadId" = ${options.threadId} AND NOT child."id" = ANY(branch.path)
+              AND child."status" = 'PUBLISHED'
+          )
+          SELECT "id" FROM branch
+          ORDER BY path
+          OFFSET ${offset}
+          LIMIT ${REPLY_BRANCH_PAGE_SIZE + 1}
+        `);
     return { rootId: root.id, rows };
   }));
 
