@@ -56,12 +56,23 @@ describe("rate-limit identity", () => {
   });
 
   it("requires a dedicated strong production secret", () => {
+    vi.stubEnv("APP_ENV", "production");
     vi.stubEnv("NODE_ENV", "production");
     expect(() => rateLimitSubject({ kind: "user", value: "user_1" })).toThrow("RATE_LIMIT_HASH_SECRET");
     vi.stubEnv("RATE_LIMIT_HASH_SECRET", "too-short");
     expect(() => rateLimitSubject({ kind: "user", value: "user_1" })).toThrow("RATE_LIMIT_HASH_SECRET");
     vi.stubEnv("RATE_LIMIT_HASH_SECRET", "a-production-secret-that-is-long-enough");
     expect(rateLimitSubject({ kind: "user", value: "user_1" })).toMatch(/^user:/);
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the local fallback in developer mode even in an optimized production runtime", () => {
+    vi.stubEnv("APP_ENV", "development");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RATE_LIMIT_HASH_SECRET", "");
+    expect(rateLimitSubject({ kind: "user", value: "user_1" })).toMatch(/^user:/);
+    vi.stubEnv("APP_ENV", "production");
+    expect(() => rateLimitSubject({ kind: "user", value: "user_1" })).toThrow("RATE_LIMIT_HASH_SECRET");
     vi.unstubAllEnvs();
   });
 });

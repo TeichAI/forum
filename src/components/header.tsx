@@ -7,6 +7,7 @@ import { isE2ETestMode } from "@/lib/e2e-auth";
 import type { ClerkAccessMode } from "@/lib/access-mode";
 import type { ForumRole } from "@/lib/roles";
 import { getMailCounts } from "@/lib/mail";
+import { isDeveloperMode } from "@/lib/env";
 
 export type HeaderViewer = {
   id: string;
@@ -32,6 +33,11 @@ export async function Header({
   const hasUnread = unread > 0;
   return (
     <header className="sticky top-0 z-50 border-b backdrop-blur-xl" style={{ borderColor: "var(--line)", background: "color-mix(in srgb, var(--background) 92%, transparent)" }}>
+      {isDeveloperMode() && (
+        <div role="status" className="border-b px-4 py-1.5 text-center text-xs font-bold" style={{ borderColor: "var(--admin-line)", background: "var(--admin-soft)", color: "var(--admin)" }}>
+          Developer mode — this deployment uses test authentication.
+        </div>
+      )}
       <div className="shell flex h-[60px] items-center gap-3 sm:h-16 sm:gap-4">
         <Link href="/" className="mr-1 flex items-center gap-2 sm:mr-2" aria-label="Teich Forum home">
           <span className="text-[1.05rem] font-black tracking-tight">Teich <span style={{ color: "var(--brand)" }}>Forum</span></span>

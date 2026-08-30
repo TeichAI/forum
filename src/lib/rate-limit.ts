@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { optionalRuntimeSecret, rateLimitingConfigured } from "@/lib/env";
+import { isDeveloperMode, optionalRuntimeSecret, rateLimitingConfigured } from "@/lib/env";
 
 export type RateLimitPolicy = {
   scope: string;
@@ -66,7 +66,7 @@ class RateLimitConfigurationError extends Error {}
 function secret() {
   const configured = optionalRuntimeSecret("RATE_LIMIT_HASH_SECRET");
   if (configured && configured.length >= 32) return configured;
-  if (process.env.NODE_ENV === "production") {
+  if (!isDeveloperMode()) {
     throw new RateLimitConfigurationError("RATE_LIMIT_HASH_SECRET must contain at least 32 characters in production");
   }
   return "teich-forum-local-rate-limit-secret";

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const validate = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/env", () => ({ validateProductionEnvironment: validate }));
+vi.mock("@/lib/env", () => ({ validateRuntimeEnvironment: validate }));
 
 import { register } from "./instrumentation";
 
@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("server instrumentation", () => {
-  it("validates the Node production server environment during startup", async () => {
+  it("validates the Node server application environment during startup", async () => {
     await register();
     expect(validate).toHaveBeenCalledOnce();
   });

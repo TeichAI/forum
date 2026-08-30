@@ -4,6 +4,7 @@ import { toHaveNoViolations } from "jest-axe";
 import { afterEach, expect } from "vitest";
 
 process.env.RATE_LIMITING_ENABLED = "false";
+process.env.APP_ENV = "development";
 
 expect.extend(toHaveNoViolations);
 

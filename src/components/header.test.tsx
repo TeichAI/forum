@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ unread: vi.fn(), mailCounts: vi.fn(), mode: vi.fn(), accountMenu: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { notification: { count: mocks.unread } } }));
@@ -11,9 +11,18 @@ vi.mock("@/components/new-thread-trigger", () => ({ NewThreadTrigger: ({ childre
 
 import { Header } from "./header";
 
-beforeEach(() => { vi.clearAllMocks(); mocks.mode.mockReturnValue(false); mocks.unread.mockResolvedValue(0); mocks.mailCounts.mockResolvedValue({ unread: 0 }); });
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("APP_ENV", "development"); mocks.mode.mockReturnValue(false); mocks.unread.mockResolvedValue(0); mocks.mailCounts.mockResolvedValue({ unread: 0 }); });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Header", () => {
+  it("shows the accessible developer warning only in developer mode", async () => {
+    const { rerender } = render(await Header({ viewer: null }));
+    expect(screen.getByRole("status")).toHaveTextContent("Developer mode — this deployment uses test authentication.");
+    vi.stubEnv("APP_ENV", "production");
+    rerender(await Header({ viewer: null }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("renders signed-out navigation without querying notifications", async () => {
     const { container } = render(await Header({ viewer: null }));
     expect(screen.getByRole("link", { name: "Sign in" })).toBeInTheDocument();

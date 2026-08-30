@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ mode: vi.fn(), viewer: vi.fn(), sessionUser: vi.fn(), categories: vi.fn(), uploads: vi.fn(), accessMode: vi.fn() }));
 vi.mock("@/lib/e2e-auth", () => ({ isE2ETestMode: mocks.mode }));
@@ -10,7 +10,7 @@ vi.mock("@/components/header", () => ({ Header: ({ viewer }: { viewer: unknown }
 vi.mock("@/components/new-thread-dialog", () => ({ NewThreadDialogProvider: ({ children, ...props }: { children: React.ReactNode }) => <div data-provider={JSON.stringify(props)}>{children}</div> }));
 vi.mock("@clerk/nextjs", () => ({ ClerkProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="clerk-provider">{children}</div> }));
 
-import RootLayout, { metadata } from "./layout";
+import RootLayout, { generateMetadata } from "./layout";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -19,18 +19,31 @@ beforeEach(() => {
   mocks.categories.mockResolvedValue([]);
   mocks.uploads.mockReturnValue(false);
   mocks.accessMode.mockReturnValue("waitlist");
+  vi.stubEnv("APP_ENV", "development");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 it("publishes site metadata and wraps normal rendering with Clerk", async () => {
   mocks.mode.mockReturnValue(false);
   const result = await RootLayout({ children: <p>Page</p> });
   expect(result.props).toEqual(expect.objectContaining({ signInUrl: "/sign-in", signUpUrl: "/sign-up", waitlistUrl: "/waitlist" }));
-  expect(metadata.description).toMatch(/community space/);
+  expect(generateMetadata()).toEqual(expect.objectContaining({
+    description: expect.stringMatching(/community space/),
+    robots: { index: false, follow: false },
+  }));
   expect(mocks.categories).toHaveBeenCalledWith({
     where: { archivedAt: null },
     orderBy: { position: "asc" },
     select: { id: true, name: true, postingPolicy: true },
   });
+});
+
+it("allows indexing only in the production application environment", () => {
+  vi.stubEnv("APP_ENV", "production");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://forum.example");
+  expect(generateMetadata().robots).toEqual({ index: true, follow: true });
 });
 
 it("loads serializable composer data for members and omits Clerk only in validated E2E mode", async () => {

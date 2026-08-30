@@ -65,6 +65,14 @@ describe("production Dockerfile", () => {
     expect(compose).toMatch(/env_file:\s+- \$\{FORUM_ENV_FILE:-\.env\.local\}/);
   });
 
+  it("keeps APP_ENV as a server-only runtime setting", () => {
+    expect(exampleEnv).toMatch(/^APP_ENV="development"$/m);
+    expect(dockerfile).not.toMatch(/^ARG APP_ENV$/m);
+    expect(dockerfile).not.toMatch(/^ARG NEXT_PUBLIC_APP_ENV$/m);
+    expect(runnerStage).not.toMatch(/^\s*APP_ENV=/m);
+    expect(compose).not.toMatch(/^\s+APP_ENV:\s/m);
+  });
+
   it("includes the Prisma CLI and migration files in the runner image", () => {
     expect(dockerfile).toContain("RUN npm install --global prisma@6.12.0");
     expect(runnerStage).toContain(

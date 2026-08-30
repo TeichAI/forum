@@ -6,7 +6,7 @@ Security reports and the documented Clerk session-token risk decision are in [SE
 
 ## Local setup
 
-1. Copy `.env.example` to `.env.local` and fill in the Clerk and PostgreSQL credentials. `CLERK_WEBHOOK_SECRET` and `UPLOADTHING_TOKEN` can remain blank for normal local development.
+1. Copy `.env.example` to `.env.local`, leave `APP_ENV=development`, and fill in Clerk development-instance (`pk_test_`/`sk_test_`) and PostgreSQL credentials. `CLERK_WEBHOOK_SECRET` and `UPLOADTHING_TOKEN` can remain blank for normal local development.
 2. Install dependencies with `npm install`.
 3. Create the schema with `npm run db:push`.
 4. Configure the Clerk role claim described below, assign an administrator in the Clerk Dashboard, start the app with `npm run dev`, and create the first space from the Spaces panel on the home page.
@@ -52,9 +52,13 @@ Enable Clerk’s express legal consent for every deployed instance. Configure th
 
 Use `docker compose --env-file .env.local up database` when local development needs only PostgreSQL, then run the application with `npm run dev`. A production image intentionally starts only `node server.js`; it never applies migrations from its startup command.
 
+The optimized Docker image can also run as a developer deployment. Keep the container’s `NODE_ENV=production`, set `APP_ENV=development`, provide Clerk development-instance keys with the exact `pk_test_`/`sk_test_` pairing, and run `docker compose --env-file .env.local up --build`. Developer mode permits the loopback application URL, an omitted Clerk webhook secret, the default `public` Clerk access mode, and the local rate-limit hashing fallback. It also displays a persistent warning and disables search indexing. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and every other `NEXT_PUBLIC_*` setting are compiled at build time, so rebuild the image whenever the public Clerk key or another public setting changes.
+
+Always connect developer mode to an isolated, non-production PostgreSQL database. The application deliberately does not guess whether a database is safe from its hostname or database name.
+
 Configure Railway’s pre-deploy command as `prisma migrate deploy` with the privileged migration credential mapped to `DATABASE_URL`. The running service should receive the restricted application credential instead. The Prisma CLI and committed migration files remain in the runner image for that pre-deploy command. Refresh the pinned Node Alpine multi-architecture digest whenever dependencies are updated.
 
-Production startup requires a PostgreSQL URL, an HTTPS `NEXT_PUBLIC_APP_URL`, live Clerk publishable and secret keys, `CLERK_WEBHOOK_SECRET`, an explicit Clerk access mode, and a 32-character `RATE_LIMIT_HASH_SECRET`. If `UPLOADTHING_TOKEN` is present, a distinct 32-character `CRON_SECRET` is also required. Startup errors name invalid variables without printing their values.
+`APP_ENV` accepts only `development` or `production` and defaults to `production` when missing. Production startup requires a PostgreSQL URL, an HTTPS URL (or loopback HTTP when appropriate), the exact Clerk `pk_live_`/`sk_live_` pairing, `CLERK_WEBHOOK_SECRET`, an explicit Clerk access mode, and a 32-character `RATE_LIMIT_HASH_SECRET`. Development requires the exact Clerk `pk_test_`/`sk_test_` pairing and still requires PostgreSQL. Live, test, or mixed key modes are rejected when they do not match `APP_ENV`. If `UPLOADTHING_TOKEN` is present in production, a distinct 32-character `CRON_SECRET` is also required. Startup errors name invalid variables without printing their values.
 
 ## Clerk webhook synchronization
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ categories: vi.fn(), tags: vi.fn(), users: vi.fn(), threads: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { category: { findMany: mocks.categories }, tag: { findMany: mocks.tags }, user: { findMany: mocks.users }, thread: { findMany: mocks.threads } } }));
@@ -12,11 +12,21 @@ beforeEach(() => {
   mocks.tags.mockResolvedValue([{ slug: "testing", createdAt: new Date("2026-08-02") }]);
   mocks.users.mockResolvedValue([{ id: "member", updatedAt: new Date("2026-08-03") }]);
   mocks.threads.mockResolvedValue([{ slug: "public-topic", updatedAt: new Date("2026-08-04") }]);
+  vi.stubEnv("APP_ENV", "development");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("SEO metadata routes", () => {
   it("publishes the sitemap reference and protects private areas", () => {
-    expect(robots()).toEqual(expect.objectContaining({ sitemap: "http://localhost:3000/sitemap.xml", rules: expect.objectContaining({ allow: "/", disallow: expect.arrayContaining(["/mail", "/staff", "/search"]) }) }));
+    vi.stubEnv("APP_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://forum.example");
+    expect(robots()).toEqual(expect.objectContaining({ sitemap: "https://forum.example/sitemap.xml", rules: expect.objectContaining({ allow: "/", disallow: expect.arrayContaining(["/mail", "/staff", "/search"]) }) }));
+  });
+
+  it("disallows all crawling and omits the sitemap in developer mode", () => {
+    expect(robots()).toEqual({ rules: { userAgent: "*", disallow: "/" } });
   });
 
   it("includes only public canonical URL families and never queries or publishes members", async () => {
