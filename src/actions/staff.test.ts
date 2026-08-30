@@ -64,7 +64,7 @@ beforeEach(() => {
   mocks.requireAdmin.mockResolvedValue(admin);
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.canModerateRole.mockImplementation((actor: string, target: string) => target !== "ADMIN" && (actor === "ADMIN" || target === "MEMBER"));
-  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
   mocks.db.moderationCase.updateMany.mockResolvedValue({ count: 1 });
   mocks.db.user.updateMany.mockResolvedValue({ count: 1 });
@@ -76,7 +76,7 @@ beforeEach(() => {
 describe("staff rate limiting", () => {
   it("stops every staff mutation before validation or database access", async () => {
     mocks.consumeUserMutation.mockResolvedValue({
-      allowed: false, retryAfterSeconds: 4, resetAt: "2026-08-25T12:00:04.000Z", remaining: 0,
+      allowed: false, retryAfterSeconds: 4, remaining: 0,
     });
     const actions = [
       claimCase, setCasePriority, closeCase, addStaffNote, moderateContent, setMemberSuspension,
@@ -85,7 +85,7 @@ describe("staff rate limiting", () => {
 
     for (const action of actions) {
       await expect(action({ status: "idle" }, new FormData())).resolves.toEqual(expect.objectContaining({
-        status: "rate_limited", retryAfterSeconds: 4,
+        status: "rate_limited", message: expect.stringContaining("wait a moment"),
       }));
     }
     expect(mocks.db.$transaction).not.toHaveBeenCalled();

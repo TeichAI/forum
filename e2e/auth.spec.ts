@@ -85,7 +85,7 @@ test("custom signup validates locally, verifies email, and reaches protected set
   await expect(page.getByRole("alert").filter({ hasText: "Those passwords do not match." })).toBeVisible();
 
   await page.getByLabel("Confirm password").fill(originalPassword);
-  const legal = page.getByRole("checkbox", { name: /community guidelines/i });
+  const legal = page.getByRole("checkbox", { name: /community standards/i });
   if (await legal.isVisible()) await legal.check();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your inbox" })).toBeVisible();

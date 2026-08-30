@@ -6,6 +6,7 @@ import { publicMetadata } from "@/lib/metadata";
 export const metadata: Metadata = publicMetadata({ title: "Privacy Policy", description: "How Teich Forum collects, uses, discloses, retains, and protects personal information.", path: "/privacy" });
 
 const EFFECTIVE_DATE = "August 25, 2026";
+const UPDATED_DATE = "August 30, 2026";
 
 const sections: LegalSection[] = [
   {
@@ -86,7 +87,8 @@ const sections: LegalSection[] = [
     id: "visibility",
     title: "What is public and what is limited-access",
     content: <>
-      <p><strong>Public or community-visible information</strong> can include your username, display name, biography, avatar, role badge, join date, threads, replies, tags, edits, upvote and dislike counts, follower relationships, and other visible community activity. Public pages can be indexed, cached, archived, quoted, or copied by users, search engines, and services outside Teich’s control.</p>
+      <p><strong>Member directory and public attribution profiles:</strong> the searchable member directory is available only to active signed-in members. Individual profiles remain publicly reachable when linked from a public discussion so readers can understand authorship. Public profiles show display name, username, avatar, biography, role, and public discussions; signed-out visitors do not see join month or follower and following counts. Profile pages ask search engines not to index them, but links may still be followed.</p>
+      <p>Public discussion attribution means people may still enumerate authors who have posted publicly by following profile links from those discussions. This residual risk is accepted so public contributions retain meaningful authorship. Public pages and information can still be cached, archived, quoted, or copied by users and services outside Teich’s control.</p>
       <p><strong>Account-limited information</strong> includes bookmarks, blocks, account settings, email address, sessions, and authentication details. Access is limited to you, authorized staff, and service providers as necessary for their functions. Administrators may have broader access than moderators where needed for account administration.</p>
       <p><strong>Teich Mail</strong> is visible to the two thread participants and is not end-to-end encrypted. Staff BCC sends independent one-to-one threads; recipients do not see one another. Authorized staff may access limited context around a Mail entry when it is reported, reasonably needed for safety, abuse prevention, support, or system integrity, or required by law. Recipients can save or share Mail, so do not treat it as a secure channel.</p>
       <p><strong>Reports and moderation records</strong> are limited to authorized staff and relevant providers. A person affected by a report may receive enough information to understand and appeal an action, but we generally do not disclose a reporter’s identity unless necessary for fairness, safety, law, or with the reporter’s permission.</p>
@@ -249,10 +251,10 @@ export default function PrivacyPage() {
       title="Privacy Policy"
       description="A detailed map of the information Teich Forum handles, why it is needed, who can see it, and the choices available to you."
       effectiveDate={EFFECTIVE_DATE}
-      updatedDate={EFFECTIVE_DATE}
+      updatedDate={UPDATED_DATE}
       highlights={[
         "We do not sell personal information or use it for cross-context behavioral advertising.",
-        "Profiles and forum posts can be public; Teich Mail is limited-access but is not end-to-end encrypted.",
+        "The member directory is member-only; linked attribution profiles remain public but ask search engines not to index them.",
         "Clerk handles authentication, GitHub and Hugging Face handle optional social sign-in, and UploadThing handles optional forum image uploads.",
         "Deleting an account clears the forum’s stored email, but contributions and safety records may remain for context and integrity.",
       ]}

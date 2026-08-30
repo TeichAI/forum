@@ -19,9 +19,10 @@ describe("SEO metadata routes", () => {
     expect(robots()).toEqual(expect.objectContaining({ sitemap: "http://localhost:3000/sitemap.xml", rules: expect.objectContaining({ allow: "/", disallow: expect.arrayContaining(["/mail", "/staff", "/search"]) }) }));
   });
 
-  it("includes only the public canonical URL families", async () => {
+  it("includes only public canonical URL families and never queries or publishes members", async () => {
     const entries = await sitemap();
-    expect(entries.map((entry) => entry.url)).toEqual(expect.arrayContaining(["http://localhost:3000/", "http://localhost:3000/terms", "http://localhost:3000/privacy", "http://localhost:3000/c/general", "http://localhost:3000/tag/testing", "http://localhost:3000/members/member", "http://localhost:3000/t/public-topic"]));
-    expect(entries.map((entry) => entry.url).join(" ")).not.toMatch(/mail|staff|search|\?/);
+    expect(entries.map((entry) => entry.url)).toEqual(expect.arrayContaining(["http://localhost:3000/", "http://localhost:3000/terms", "http://localhost:3000/privacy", "http://localhost:3000/c/general", "http://localhost:3000/tag/testing", "http://localhost:3000/t/public-topic"]));
+    expect(entries.map((entry) => entry.url).join(" ")).not.toMatch(/mail|staff|search|members|\?/);
+    expect(mocks.users).not.toHaveBeenCalled();
   });
 });

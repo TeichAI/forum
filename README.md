@@ -44,6 +44,8 @@ This public setting is compiled into the browser bundle. Change the Access mode 
 
 For Docker Compose, export the mode before building when it is not `public`, for example `NEXT_PUBLIC_CLERK_ACCESS_MODE=waitlist docker compose --env-file .env.local up --build`.
 
+Enable Clerk’s express legal consent for every deployed instance. Configure the Terms URL as `${NEXT_PUBLIC_APP_URL}/terms` and the Privacy URL as `${NEXT_PUBLIC_APP_URL}/privacy`; the custom signup flow sends Clerk `legalAccepted: true` and can complete consent requirements that appear only after email verification.
+
 ## Docker and deployment
 
 Use `docker compose --env-file .env.local up database` when local development needs only PostgreSQL, then run the application with `npm run dev`. A production image intentionally starts only `node server.js`; it never applies migrations from its startup command.
@@ -71,6 +73,12 @@ Set `RATE_LIMIT_HASH_SECRET` to a random value of at least 32 characters in ever
 The checked-in policy favors comfortable bursts and continuously refills capacity rather than imposing fixed-window or daily quotas. Railway edge or host-level protections should still be enabled for malformed requests and volumetric attacks before they reach Next.js.
 
 Use `/healthz` for process liveness and `/readyz` when database readiness is required. Both endpoints are unauthenticated, uncached, exempt from application read limits, and return no internal error details.
+
+## Member visibility policy
+
+The searchable `/members` directory is available only to active signed-in members. Individual `/members/[id]` profiles remain publicly reachable for attribution from public discussions, but they are marked `noindex, follow` and are excluded from the sitemap. Signed-out profile viewers see only the display name, username, avatar, biography, role, and public discussions; join month and follower/following counts require an active account.
+
+Publicly active authors can still be enumerated by following attribution links from public discussions. This is an accepted residual risk of preserving understandable authorship without bulk-publishing the member directory or advertising profile URLs to search engines.
 
 ## Testing
 

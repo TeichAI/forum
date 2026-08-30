@@ -16,8 +16,8 @@ export function StaffActionForm({
   className?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
-  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
-  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
+  const rateState = state.status === "rate_limited" ? state : null;
+  const { coolingDown, onReady } = useRateLimitCooldown(rateState);
   return (
     <form action={formAction} className={className} aria-busy={pending}>
       <fieldset disabled={pending || coolingDown} className="contents">{children}</fieldset>
@@ -31,7 +31,7 @@ export function StaffActionForm({
           {state.message}
         </p>
       ) : null}
-      {resetAt ? <RateLimitCountdown resetAt={resetAt} onReady={onReady} className="text-xs font-semibold" /> : null}
+      {rateState ? <RateLimitCountdown trigger={rateState} onReady={onReady} className="text-xs font-semibold" /> : null}
     </form>
   );
 }

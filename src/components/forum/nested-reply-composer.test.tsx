@@ -59,8 +59,6 @@ describe("nested reply composer", () => {
     mocks.createReply.mockResolvedValue({
       status: "rate_limited",
       message: "Please slow down.",
-      retryAfterSeconds: 30,
-      resetAt: new Date(Date.now() + 30_000).toISOString(),
     });
     render(<ReplyComposers />);
     fireEvent.click(screen.getByRole("button", { name: "Reply to One" }));

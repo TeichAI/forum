@@ -172,6 +172,21 @@ describe("AccountSecurity", () => {
     expect(mocks.signOut).toHaveBeenCalledWith({ redirectUrl: "/" });
   });
 
+  it("starts a fixed client cooldown from a timing-free deletion error body", async () => {
+    const user = userEvent.setup();
+    mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "Please wait a moment and try again." }), {
+      status: 429,
+      headers: { "Retry-After": "47", "content-type": "application/json" },
+    }));
+    render(<AccountSecurity displayName="Owen Example" username="owen" imageUrl={null} />);
+    await user.type(screen.getByLabelText(/Type owen to confirm/), "owen");
+    await user.click(screen.getByRole("button", { name: "Delete my account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please wait a moment and try again.");
+    expect(screen.getByText("Try again in 30 seconds.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete my account" })).toBeDisabled();
+  });
+
   it("shows provider loading, signed-out, and disabled-deletion states", async () => {
     state.loaded = false;
     const view = render(<AccountSecurity displayName="Owen" username="owen" imageUrl={null} />);

@@ -117,9 +117,9 @@ describe("consumeRateLimit", () => {
     expect(mocks.rateLimitBucket.update).not.toHaveBeenCalled();
     expect(rateLimitedActionState(result)).toEqual(expect.objectContaining({
       status: "rate_limited",
-      retryAfterSeconds: 10,
-      message: expect.stringContaining("10 seconds"),
+      message: expect.stringContaining("wait a moment"),
     }));
+    expect(JSON.stringify(rateLimitedActionState(result))).not.toMatch(/10|retryAfter|resetAt|second/i);
   });
 
   it("fails open and logs a sanitized event when storage is unavailable", async () => {
@@ -138,7 +138,7 @@ describe("consumeRateLimit", () => {
     expect(result).toEqual(expect.objectContaining({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, remaining: 0 }));
     expect(rateLimitedActionState(result)).toEqual({
       status: "error",
-      message: "We couldn’t complete a temporary security check. Please try again in 30 seconds.",
+      message: "We couldn’t complete a temporary security check. Please wait a moment and try again.",
     });
     expect(log).toHaveBeenCalledWith(expect.not.stringContaining("private-host"));
     expect(log).toHaveBeenCalledWith(expect.not.stringContaining("user_1"));
@@ -219,8 +219,11 @@ describe("consumeRateLimit", () => {
     expect(log).toHaveBeenCalledWith(expect.not.stringContaining("private database detail"));
   });
 
-  it("uses natural singular countdown copy", () => {
-    expect(rateLimitedActionState({ outcome: "limit_exceeded", allowed: false, retryAfterSeconds: 1, resetAt: now.toISOString(), remaining: 0 }).message).toContain("1 second.");
+  it("does not expose server retry precision in action state", () => {
+    expect(rateLimitedActionState({ outcome: "limit_exceeded", allowed: false, retryAfterSeconds: 1, remaining: 0 })).toEqual({
+      status: "rate_limited",
+      message: "You’re doing that a little too quickly. Please wait a moment and try again.",
+    });
   });
 });
 

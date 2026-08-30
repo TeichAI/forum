@@ -9,6 +9,8 @@ it("makes consent explicit and links both policies", async () => {
   const { container } = render(<LegalConsent checked={false} onChange={onChange} />);
   const checkbox = screen.getByRole("checkbox", { name: /Terms of Service.*community standards.*Privacy Policy/i });
   expect(checkbox).toBeRequired();
+  expect(checkbox).toHaveAttribute("id", "legal-accepted");
+  expect(checkbox).toHaveAttribute("name", "legalAccepted");
   expect(screen.getByRole("link", { name: "Terms of Service" })).toHaveAttribute("href", "/terms");
   expect(screen.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
   await userEvent.click(checkbox);

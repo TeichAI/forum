@@ -317,7 +317,7 @@ describe("SignUpForm email verification", () => {
     await enterVerification(hook, user);
     await user.type(screen.getByLabelText("Verification code"), "424242");
     await user.click(screen.getByRole("button", { name: "Verify and join" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("still needs more information");
+    expect(screen.getByRole("alert")).toHaveTextContent("still needs information that this form does not support");
 
     hook.signUp.verifications.verifyEmailCode.mockImplementationOnce(async () => {
       hook.signUp.status = "complete";
@@ -325,6 +325,40 @@ describe("SignUpForm email verification", () => {
     });
     await user.click(screen.getByRole("button", { name: "Verify and join" }));
     expect(hook.signUp.finalize).toHaveBeenCalledOnce();
+  });
+
+  it("completes legal consent when Clerk requires it only after email verification", async () => {
+    const user = userEvent.setup();
+    const hook = createSignUpHook();
+    hook.signUp.verifications.verifyEmailCode.mockImplementationOnce(async () => {
+      hook.signUp.status = "missing_requirements";
+      hook.signUp.missingFields = ["legal_accepted"];
+      return { error: null };
+    });
+    hook.signUp.update.mockImplementationOnce(async () => {
+      hook.signUp.status = "complete";
+      hook.signUp.missingFields = [];
+      return { error: null };
+    });
+    navigateOnFinalize(hook);
+
+    await enterVerification(hook, user);
+    await user.type(screen.getByLabelText("Verification code"), "424242");
+    await user.click(screen.getByRole("button", { name: "Verify and join" }));
+
+    expect(screen.getByRole("heading", { name: "Complete your account" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /GitHub|Hugging Face/ })).not.toBeInTheDocument();
+    const legal = screen.getByRole("checkbox", { name: /community standards/i });
+    expect(legal).toHaveAttribute("name", "legalAccepted");
+    await user.click(screen.getByRole("button", { name: "Complete account" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("accept the account terms");
+    expect(hook.signUp.update).not.toHaveBeenCalled();
+
+    await user.click(legal);
+    await user.click(screen.getByRole("button", { name: "Complete account" }));
+    expect(hook.signUp.update).toHaveBeenCalledWith({ legalAccepted: true });
+    expect(hook.signUp.finalize).toHaveBeenCalledOnce();
+    expect(router.replace).toHaveBeenCalledWith("/settings?__clerk=1");
   });
 
   it("resends, reports resend errors, and disables resend while busy", async () => {

@@ -169,6 +169,18 @@ describe("MailComposer", () => {
     expect(mocks.push).toHaveBeenCalledWith("/mail");
   });
 
+  it("prevents immediate repeat actions after a timing-free mail limit", async () => {
+    const draft = { id: "cm000000000000000000000002", threadId: null, subject: "Saved subject", body: "Saved body", recipients: [recipient] };
+    mocks.send.mockResolvedValueOnce({ status: "rate_limited", message: "Please wait a moment and try again." });
+    render(<MailComposer role="MEMBER" draft={draft} uploadsEnabled={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Send mail" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Try again in 30 seconds.");
+    expect(screen.getByRole("button", { name: "Send mail" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save & close" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+  });
+
   it("waits for initial autosave creation before discarding the resulting draft", async () => {
     vi.useFakeTimers();
     const pending = deferred<{ status: "saved"; draftId: string; savedAt: string }>();

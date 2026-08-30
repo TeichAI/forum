@@ -22,7 +22,6 @@ export type RateLimitResult = {
   outcome: "allowed" | "limit_exceeded" | "storage_unavailable";
   allowed: boolean;
   retryAfterSeconds: number;
-  resetAt: string;
   remaining: number;
 };
 
@@ -30,15 +29,11 @@ export type RateLimitedActionState =
   | {
     status: "rate_limited";
     message: string;
-    retryAfterSeconds: number;
-    resetAt: string;
     fieldErrors?: undefined;
   }
   | {
     status: "error";
     message: string;
-    retryAfterSeconds?: undefined;
-    resetAt?: undefined;
     fieldErrors?: undefined;
   };
 
@@ -94,23 +89,16 @@ function idleTtlSeconds(policy: RateLimitPolicy) {
   return Math.max(3_600, Math.ceil(policy.capacity / policy.refillPerSecond) + 3_600);
 }
 
-function actionResetAt(retryAfterSeconds: number) {
-  return new Date(Date.now() + retryAfterSeconds * 1_000).toISOString();
-}
-
 export function rateLimitedActionState(result: RateLimitResult): RateLimitedActionState {
   if (result.outcome === "storage_unavailable") {
     return {
       status: "error",
-      message: "We couldn’t complete a temporary security check. Please try again in 30 seconds.",
+      message: "We couldn’t complete a temporary security check. Please wait a moment and try again.",
     };
   }
-  const duration = result.retryAfterSeconds === 1 ? "1 second" : `${result.retryAfterSeconds} seconds`;
   return {
     status: "rate_limited",
-    message: `You’re doing that a little too quickly. Try again in ${duration}.`,
-    retryAfterSeconds: result.retryAfterSeconds,
-    resetAt: result.resetAt,
+    message: "You’re doing that a little too quickly. Please wait a moment and try again.",
   };
 }
 
@@ -141,7 +129,7 @@ export async function consumeRateLimit(
   options: { storageFailure: "allow" | "deny" } = { storageFailure: "allow" },
 ): Promise<RateLimitResult> {
   if (!rateLimitingEnabled() || policies.length === 0) {
-    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
+    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, remaining: Number.POSITIVE_INFINITY };
   }
 
   const subject = rateLimitSubject(subjectInput);
@@ -199,7 +187,6 @@ export async function consumeRateLimit(
       };
     }, { isolationLevel: "ReadCommitted" });
 
-    const resetAt = actionResetAt(result.retryAfterSeconds);
     if (!result.allowed) {
       console.warn(JSON.stringify({
         event: "rate_limit.denied",
@@ -213,7 +200,7 @@ export async function consumeRateLimit(
         console.error(JSON.stringify({ event: "rate_limit.cleanup_failed", error: error instanceof Error ? error.name : "UnknownError" }));
       });
     }
-    return { ...result, outcome: result.allowed ? "allowed" : "limit_exceeded", resetAt };
+    return { ...result, outcome: result.allowed ? "allowed" : "limit_exceeded" };
   } catch (error) {
     if (error instanceof RateLimitConfigurationError) throw error;
     console.error(JSON.stringify({
@@ -223,9 +210,9 @@ export async function consumeRateLimit(
       error: error instanceof Error ? error.name : "UnknownError",
     }));
     if (options.storageFailure === "deny") {
-      return { outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: actionResetAt(30), remaining: 0 };
+      return { outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, remaining: 0 };
     }
-    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: Number.POSITIVE_INFINITY };
+    return { outcome: "allowed", allowed: true, retryAfterSeconds: 0, remaining: Number.POSITIVE_INFINITY };
   }
 }
 

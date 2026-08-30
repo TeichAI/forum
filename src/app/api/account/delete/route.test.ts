@@ -34,18 +34,18 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ deleteSelfEnabled: true });
   mocks.deleteUser.mockResolvedValue({ id: "user_1" });
   mocks.updateMany.mockResolvedValue({ count: 1 });
-  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
 });
 
 describe("POST /api/account/delete", () => {
   it("returns a standards-based 429 before parsing or deleting when limited", async () => {
     const { POST } = await import("./route");
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 45, resetAt: "2026-08-25T12:00:45.000Z", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 45, remaining: 0 });
     const response = await POST(request());
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("45");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toEqual(expect.objectContaining({ retryAfterSeconds: 45, resetAt: "2026-08-25T12:00:45.000Z" }));
+    await expect(response.json()).resolves.toEqual({ error: "You’re doing that a little too quickly. Please wait a moment and try again." });
     expect(mocks.deleteUser).not.toHaveBeenCalled();
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
@@ -74,7 +74,7 @@ describe("POST /api/account/delete", () => {
 
   it("fails closed with 503 when mutation rate-limit storage is unavailable", async () => {
     const { POST } = await import("./route");
-    mocks.consumeUserMutation.mockResolvedValueOnce({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: "later", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, remaining: 0 });
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(response.headers.get("retry-after")).toBe("30");

@@ -16,13 +16,25 @@ describe("UploadThing route capability", () => {
   it("fails upload mutations closed with a standards-based 503", async () => {
     vi.stubEnv("UPLOADTHING_TOKEN", "configured-for-mutation");
     mocks.viewer.mockResolvedValue({ id: "local", clerkId: "clerk", role: "MEMBER" });
-    mocks.consume.mockResolvedValue({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, resetAt: "later", remaining: 0 });
+    mocks.consume.mockResolvedValue({ outcome: "storage_unavailable", allowed: false, retryAfterSeconds: 30, remaining: 0 });
     const { POST } = await import("./route");
     const { NextRequest } = await import("next/server");
     const response = await POST(new NextRequest("http://localhost/api/uploadthing", { method: "POST" }));
     expect(response.status).toBe(503);
     expect(response.headers.get("retry-after")).toBe("30");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("keeps precise retry timing in the 429 header and out of the JSON body", async () => {
+    vi.stubEnv("UPLOADTHING_TOKEN", "configured-for-limited-upload");
+    mocks.viewer.mockResolvedValue({ id: "local", clerkId: "clerk", role: "MEMBER" });
+    mocks.consume.mockResolvedValue({ outcome: "limit_exceeded", allowed: false, retryAfterSeconds: 47, remaining: 0 });
+    const { POST } = await import("./route");
+    const { NextRequest } = await import("next/server");
+    const response = await POST(new NextRequest("http://localhost/api/uploadthing", { method: "POST" }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("47");
+    await expect(response.json()).resolves.toEqual({ error: "You’re doing that a little too quickly. Please wait a moment and try again." });
   });
 
   it("passes signed-provider hook requests to UploadThing instead of requiring a browser session", async () => {

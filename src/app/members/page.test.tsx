@@ -5,10 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   listMembers: vi.fn(),
   countMembers: vi.fn(),
+  requireUser: vi.fn(),
 }));
 
 vi.mock("@/lib/queries", () => ({ listMembersPage: mocks.listMembers }));
 vi.mock("@/lib/db", () => ({ db: { user: { count: mocks.countMembers } } }));
+vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
 
 import MembersPage, { metadata } from "./page";
 
@@ -22,6 +24,9 @@ const members = [
     imageUrl: null,
     role: "MEMBER" as const,
     createdAt: now,
+    email: "PRIVATE_DIRECTORY_EMAIL_SENTINEL",
+    clerkId: "PRIVATE_DIRECTORY_CLERK_SENTINEL",
+    suspensionReason: "PRIVATE_DIRECTORY_MODERATION_SENTINEL",
     _count: { threads: 2, replies: 3 },
   },
   {
@@ -45,6 +50,7 @@ const administrator = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.requireUser.mockResolvedValue({ id: "viewer", status: "ACTIVE" });
   mocks.countMembers.mockResolvedValue(3);
   mocks.listMembers.mockImplementation((_query: string, _cursor: string | undefined, _take: number, role: string) => Promise.resolve({
     items: role === "ADMIN" ? [administrator] : role === "MODERATOR" ? [members[1]] : [members[0]],
@@ -53,11 +59,15 @@ beforeEach(() => {
 });
 
 describe("members directory", () => {
-  it("publishes descriptive metadata", () => {
-    expect(metadata).toEqual(expect.objectContaining({
-      title: "Members",
-      description: expect.stringContaining("Teich community"),
-    }));
+  it("keeps directory metadata out of search indexes", () => {
+    expect(metadata).toEqual({ title: "Members", robots: { index: false, follow: false } });
+  });
+
+  it("redirects anonymous visitors before any member query", async () => {
+    mocks.requireUser.mockImplementationOnce(() => { throw new Error("redirect:/sign-in"); });
+    await expect(MembersPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/sign-in");
+    expect(mocks.listMembers).not.toHaveBeenCalled();
+    expect(mocks.countMembers).not.toHaveBeenCalled();
   });
 
   it("renders searchable member cards with profile links and public activity", async () => {
@@ -79,6 +89,8 @@ describe("members directory", () => {
     expect(mocks.listMembers).toHaveBeenCalledWith("", undefined, 50, "MODERATOR");
     expect(mocks.listMembers).toHaveBeenCalledWith("", undefined, 24, "MEMBER");
     expect(mocks.countMembers).toHaveBeenCalledWith({ where: { status: "ACTIVE" } });
+    expect(mocks.requireUser).toHaveBeenCalledOnce();
+    expect(container).not.toHaveTextContent(/PRIVATE_DIRECTORY_(EMAIL|CLERK|MODERATION)_SENTINEL/);
     expect(await axe(container)).toHaveNoViolations();
   });
 

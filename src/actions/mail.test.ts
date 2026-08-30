@@ -32,9 +32,9 @@ function form(values: Record<string, string | string[] | undefined>) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUser.mockResolvedValue(user);
-  mocks.consumeRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
-  mocks.consumeMutationRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
-  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: "now", remaining: 10 });
+  mocks.consumeRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
+  mocks.consumeMutationRateLimit.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
   mocks.db.user.findMany.mockResolvedValue([other]);
   mocks.db.block.findFirst.mockResolvedValue(null);
   mocks.db.block.findMany.mockResolvedValue([]);
@@ -69,7 +69,7 @@ describe("Mail server actions", () => {
   });
 
   it("rejects unavailable draft recipients, threads, owners, and rate-limited saves", async () => {
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, resetAt: "later", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, remaining: 0 });
     await expect(saveMailDraft(form({ subject: "Later" }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
 
     mocks.db.user.findMany.mockResolvedValueOnce([]);
@@ -98,7 +98,7 @@ describe("Mail server actions", () => {
   });
 
   it("returns rate limits and missing-draft errors before sending", async () => {
-    mocks.consumeMutationRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 4, resetAt: "later", remaining: 0 });
+    mocks.consumeMutationRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 4, remaining: 0 });
     await expect(sendMail(form({ recipientId: ids.other, subject: "Subject", body: "Body" }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
     mocks.db.mailDraft.findFirst.mockResolvedValue(null);
     await expect(sendMail(form({ draftId: ids.draft, recipientId: ids.other, subject: "Subject", body: "Body" }))).resolves.toEqual(expect.objectContaining({ status: "error", message: expect.stringContaining("draft") }));
@@ -129,7 +129,7 @@ describe("Mail server actions", () => {
 
   it("rejects invalid, limited, removed, and inactive replies", async () => {
     await expect(replyToMail(form({ threadId: "bad", body: "Reply" }))).resolves.toEqual({ status: "error", message: "This mail thread is invalid." });
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, resetAt: "later", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, remaining: 0 });
     await expect(replyToMail(form({ threadId: ids.thread, body: "Reply" }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
 
     mocks.db.mailParticipant.findUnique.mockResolvedValueOnce(null);
@@ -167,7 +167,7 @@ describe("Mail server actions", () => {
     mocks.db.mailParticipant.findUnique.mockResolvedValueOnce({ removedAt: new Date(), location: "TRASH", starred: false });
     await expect(removeMailboxCopy(form({ threadId: ids.thread }))).resolves.toEqual({ status: "error", message: "This mail thread is unavailable." });
 
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, resetAt: "later", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, remaining: 0 });
     await expect(setMailLocation(form({ threadId: ids.thread, location: "ARCHIVE" }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
     await expect(toggleMailStar(form({ threadId: "bad" }))).resolves.toEqual({ status: "error", message: "This mail thread is unavailable." });
     await expect(setMailReadState(form({ threadId: "bad" }))).resolves.toEqual({ status: "error", message: "This mail thread is unavailable." });
@@ -182,7 +182,7 @@ describe("Mail server actions", () => {
 
   it("rejects invalid and rate-limited draft deletion", async () => {
     await expect(deleteMailDraft(form({ draftId: "bad" }))).resolves.toEqual({ status: "error", message: "Choose a valid draft." });
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, resetAt: "later", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 3, remaining: 0 });
     await expect(deleteMailDraft(form({ draftId: ids.draft }))).resolves.toEqual(expect.objectContaining({ status: "rate_limited" }));
   });
 });

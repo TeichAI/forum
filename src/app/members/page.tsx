@@ -7,12 +7,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { listMembersPage } from "@/lib/queries";
-import { publicMetadata } from "@/lib/metadata";
+import { privateMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = publicMetadata({ title: "Members", description: "Meet the people building and sharing in the Teich community.", path: "/members" });
+export const metadata: Metadata = privateMetadata("Members");
 
 type MemberListItem = Awaited<ReturnType<typeof listMembersPage>>["items"][number];
 
@@ -65,6 +66,7 @@ export default async function MembersPage({
 }: {
   searchParams?: Promise<{ q?: string; cursor?: string }>;
 }) {
+  await requireUser();
   const params = await searchParams;
   const q = params.q?.trim().slice(0, 80) ?? "";
   const [administratorPage, moderatorPage, memberPage, memberCount] = await Promise.all([

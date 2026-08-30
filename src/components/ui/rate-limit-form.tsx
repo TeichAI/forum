@@ -20,9 +20,8 @@ export const RateLimitForm = forwardRef<HTMLFormElement, Omit<React.ComponentPro
   const [state, formAction, pending] = useActionState<FormState, FormData>(async (_previous, formData) => {
     return await action(formData) ?? { status: "idle" };
   }, { status: "idle" });
-  const rateState = state.status === "rate_limited" && "resetAt" in state ? state : null;
-  const resetAt = rateState?.resetAt;
-  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
+  const rateState = state.status === "rate_limited" ? state : null;
+  const { coolingDown, onReady } = useRateLimitCooldown(rateState);
 
   useEffect(() => {
     if (state.status === "success") onSuccess?.(state);
@@ -35,7 +34,7 @@ export const RateLimitForm = forwardRef<HTMLFormElement, Omit<React.ComponentPro
         {rateState ? (
           <div className="mt-3 space-y-1 text-sm" style={{ color: "var(--danger)" }} role="alert">
             <p className="font-semibold">{rateState.message}</p>
-            <RateLimitCountdown resetAt={rateState.resetAt} onReady={onReady} />
+            <RateLimitCountdown trigger={rateState} onReady={onReady} />
           </div>
         ) : null}
       </form>

@@ -25,8 +25,8 @@ export function MarkdownEditorClient({
 }: MarkdownEditorProps & { uploadsEnabled: boolean }) {
   const [value, setValue] = useState(initialValue);
   const [uploadError, setUploadError] = useState("");
-  const [uploadResetAt, setUploadResetAt] = useState<string>();
-  const { coolingDown, onReady } = useRateLimitCooldown(uploadResetAt);
+  const [uploadLimit, setUploadLimit] = useState<object | null>(null);
+  const { coolingDown, onReady } = useRateLimitCooldown(uploadLimit);
 
   return (
     <div className="overflow-hidden rounded-xl border focus-within:border-[var(--brand)] focus-within:shadow-[var(--focus-ring)] transition-shadow" style={{ borderColor: "var(--line)", background: "var(--surface)" }}>
@@ -41,14 +41,13 @@ export function MarkdownEditorClient({
             content={{ button: <><ImagePlus size={13} aria-hidden /> Add image</> }}
             onClientUploadComplete={(files) => {
               setUploadError("");
-              setUploadResetAt(undefined);
+              setUploadLimit(null);
               const file = files[0];
               if (file?.serverData?.url) setValue((current) => `${current}${current ? "\n\n" : ""}![${file.name}](${file.serverData.url})`);
             }}
             onUploadError={(error) => {
               setUploadError(error.message);
-              const seconds = Number(error.message.match(/Try again in (\d+) second/)?.[1]);
-              setUploadResetAt(Number.isFinite(seconds) ? new Date(Date.now() + seconds * 1_000).toISOString() : undefined);
+              setUploadLimit(/too quickly|temporary security check/i.test(error.message) ? {} : null);
             }}
           />
         ) : null}
@@ -56,7 +55,7 @@ export function MarkdownEditorClient({
       {uploadError ? (
         <div className="border-b px-3 py-2 text-xs font-semibold" style={{ borderColor: "var(--line)", color: "var(--danger)" }} role="alert">
           {uploadError}
-          {uploadResetAt ? <div className="mt-1"><RateLimitCountdown resetAt={uploadResetAt} onReady={onReady} className="text-xs font-semibold" /></div> : null}
+          {uploadLimit ? <div className="mt-1"><RateLimitCountdown trigger={uploadLimit} onReady={onReady} className="text-xs font-semibold" /></div> : null}
         </div>
       ) : null}
       <textarea

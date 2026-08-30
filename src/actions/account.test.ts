@@ -34,7 +34,7 @@ beforeEach(() => {
   mocks.requireUser.mockResolvedValue(localUser);
   mocks.auth.mockResolvedValue({ userId: "user_1" });
   mocks.clerkClient.mockResolvedValue({ users: { getUser: mocks.getUser } });
-  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: now(), remaining: 10 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
   mocks.update.mockResolvedValue(localUser);
   mocks.getUser.mockResolvedValue({
     primaryEmailAddressId: "email_1",
@@ -43,19 +43,15 @@ beforeEach(() => {
   });
 });
 
-function now() {
-  return new Date().toISOString();
-}
-
 describe("account profile actions", () => {
   it("stops profile and identity writes when the account limit is reached", async () => {
     mocks.consumeUserMutation.mockResolvedValue({
-      allowed: false, retryAfterSeconds: 9, resetAt: "2026-08-25T12:00:09.000Z", remaining: 0,
+      allowed: false, retryAfterSeconds: 9, remaining: 0,
     });
 
     await expect(updateAccountProfile(initialAccountActionState, form({ displayName: "Owen", username: "owen", bio: "" })))
-      .resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 9 }));
-    await expect(syncAccountIdentity()).resolves.toEqual(expect.objectContaining({ ok: false, retryAfterSeconds: 9 }));
+      .resolves.toEqual({ status: "rate_limited", message: "You’re doing that a little too quickly. Please wait a moment and try again." });
+    await expect(syncAccountIdentity()).resolves.toEqual({ ok: false, message: "You’re doing that a little too quickly. Please wait a moment and try again." });
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.getUser).not.toHaveBeenCalled();
   });

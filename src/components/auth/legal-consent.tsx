@@ -4,6 +4,8 @@ export function LegalConsent({ checked, onChange }: { checked: boolean; onChange
   return (
     <label className="mt-5 flex items-start gap-2.5 text-xs leading-5 muted">
       <input
+        id="legal-accepted"
+        name="legalAccepted"
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}

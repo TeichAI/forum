@@ -30,4 +30,12 @@ describe("MarkdownEditorClient", () => {
     act(() => (upload.props!.onUploadError as (error: Error) => void)(new Error("Upload failed")));
     expect(screen.getByRole("alert")).toHaveTextContent("Upload failed");
   });
+
+  it("uses a fixed local cooldown for rate-limited uploads without parsing server timing", () => {
+    render(<MarkdownEditorClient uploadsEnabled />);
+    act(() => (upload.props!.onUploadError as (error: Error) => void)(new Error("You’re doing that a little too quickly. Please wait a moment and try again.")));
+    expect(screen.getByRole("alert")).toHaveTextContent("Try again in 30 seconds.");
+    expect(screen.queryByRole("button", { name: "Fake upload" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add image" })).toBeDisabled();
+  });
 });
