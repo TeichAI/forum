@@ -150,4 +150,41 @@ describe("Clerk webhook route", () => {
     expect(args.update).toEqual({ email: "new@example.com", imageUrl: "https://example.com/avatar.png", role: expectedRole });
     expect(args.create.displayName).toBe(current ? "Kept Name" : "New Member");
   });
+
+  it("ignores poisoned unsafe_metadata while synchronizing a signed user event", async () => {
+    const secret = "whsec_dGVzdC1zZWNyZXQ=";
+    const messageId = "msg_unsafe_metadata";
+    const timestamp = new Date();
+    const payload = JSON.stringify({
+      type: "user.updated",
+      data: {
+        id: "user_member",
+        username: "member",
+        first_name: "Forum",
+        last_name: "Member",
+        image_url: null,
+        primary_email_address_id: null,
+        email_addresses: [],
+        public_metadata: { role: "member" },
+        unsafe_metadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+      },
+    });
+    vi.stubEnv("CLERK_WEBHOOK_SECRET", secret);
+    headersMock.mockResolvedValue(new Headers({
+      "svix-id": messageId,
+      "svix-timestamp": String(Math.floor(timestamp.getTime() / 1000)),
+      "svix-signature": new Webhook(secret).sign(messageId, timestamp, payload),
+    }));
+    findUniqueMock.mockResolvedValue({ clerkId: "user_member", username: "member", displayName: "Forum Member" });
+    upsertMock.mockResolvedValue({});
+    const { POST } = await import("./route");
+
+    const response = await POST(new Request("http://localhost/api/webhooks/clerk", { method: "POST", body: payload }));
+
+    expect(response.status).toBe(200);
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ role: "MEMBER" }),
+      create: expect.objectContaining({ role: "MEMBER" }),
+    }));
+  });
 });

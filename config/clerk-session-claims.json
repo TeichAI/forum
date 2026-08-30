@@ -1,0 +1,3 @@
+{
+  "forum_role": "{{user.public_metadata.role}}"
+}
