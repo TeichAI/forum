@@ -10,5 +10,6 @@ export function canStartDiscussion(role: ViewerRole, policy: SpacePostingPolicy)
 
 export function canComment(role: ViewerRole, policy: SpacePostingPolicy) {
   if (!role) return false;
-  return role === "ADMIN" || policy !== "ADMIN_ONLY";
+  if (policy === "ADMIN_ONLY" || policy === "ANNOUNCEMENTS") return role === "ADMIN";
+  return true;
 }

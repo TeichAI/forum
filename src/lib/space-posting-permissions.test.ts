@@ -20,10 +20,10 @@ describe("space posting permissions", () => {
 
   it.each([
     ["MEMBER", "OPEN", true],
-    ["MEMBER", "ANNOUNCEMENTS", true],
+    ["MEMBER", "ANNOUNCEMENTS", false],
     ["MEMBER", "ADMIN_ONLY", false],
     ["MODERATOR", "OPEN", true],
-    ["MODERATOR", "ANNOUNCEMENTS", true],
+    ["MODERATOR", "ANNOUNCEMENTS", false],
     ["MODERATOR", "ADMIN_ONLY", false],
     ["ADMIN", "OPEN", true],
     ["ADMIN", "ANNOUNCEMENTS", true],

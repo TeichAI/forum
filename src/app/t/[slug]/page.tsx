@@ -73,8 +73,7 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
     && canComment(viewer.role, thread.category.postingPolicy),
   );
   const replyUploadsEnabled = uploadsEnabled();
-  const showPolicyReplyNotice = thread.category.postingPolicy === "ADMIN_ONLY"
-    && !canComment(viewer?.role, thread.category.postingPolicy);
+  const showPolicyReplyNotice = !canComment(viewer?.role, thread.category.postingPolicy);
 
   return (
     <div className="shell max-w-4xl py-8">

@@ -248,15 +248,14 @@ describe("discussion actions", () => {
     await expect(createThread(form({ title: "An admin title", body: "Body", categoryId: ids.category }))).rejects.toThrow("redirect:/t/admin-topic");
   });
 
-  it("allows member comments in announcements and denies them in admin-only spaces", async () => {
+  it("denies member comments in announcements and admin-only spaces", async () => {
     mocks.db.thread.findUnique
       .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ANNOUNCEMENTS" } })
       .mockResolvedValueOnce({ id: ids.thread, slug: "topic", authorId: ids.other, author: { status: "ACTIVE" }, isLocked: false, status: "PUBLISHED", category: { postingPolicy: "ADMIN_ONLY" } });
-    mocks.db.reply.create.mockResolvedValue({ id: ids.reply });
 
-    await createReply(form({ threadId: ids.thread, body: "Allowed reply" }));
     await expect(createReply(form({ threadId: ids.thread, body: "Denied reply" }))).rejects.toThrow("permission");
-    expect(mocks.db.reply.create).toHaveBeenCalledTimes(1);
+    await expect(createReply(form({ threadId: ids.thread, body: "Also denied" }))).rejects.toThrow("permission");
+    expect(mocks.db.reply.create).not.toHaveBeenCalled();
   });
 
   it("keeps thread locks absolute for administrators", async () => {
