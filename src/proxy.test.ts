@@ -111,6 +111,8 @@ describe("request proxy", () => {
         directives: expect.objectContaining({
           "connect-src": expect.arrayContaining(["https://*.uploadthing.com", "https://*.ufs.sh"]),
           "object-src": ["none"],
+          "base-uri": ["self"],
+          "form-action": ["self"],
           "frame-ancestors": ["none"],
         }),
       }),
@@ -128,6 +130,7 @@ describe("request proxy", () => {
     expect(policy).toContain("'nonce-one'");
     expect(policy).toContain("'strict-dynamic'");
     expect(policy.match(/script-src[^;]*/)?.[0]).not.toContain("'unsafe-inline'");
+    expect(policy.match(/script-src[^;]*/)?.[0]).not.toContain("'unsafe-eval'");
     expect(policy.match(/style-src[^;]*/)?.[0]).toContain("'unsafe-inline'");
     expect(response.headers.get("x-middleware-request-content-security-policy")?.match(/script-src[^;]*/)?.[0]).not.toContain("'unsafe-inline'");
   });

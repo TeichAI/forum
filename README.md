@@ -2,6 +2,8 @@
 
 A community forum for Teich, built with Next.js, Clerk, and PostgreSQL/Prisma. UploadThing image uploads are optional.
 
+Security reports and the documented Clerk session-token risk decision are in [SECURITY.md](SECURITY.md).
+
 ## Local setup
 
 1. Copy `.env.example` to `.env.local` and fill in the Clerk and PostgreSQL credentials. `CLERK_WEBHOOK_SECRET` and `UPLOADTHING_TOKEN` can remain blank for normal local development.
