@@ -2,50 +2,45 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-function secondsUntil(resetAt: string) {
-  return Math.max(0, Math.ceil((new Date(resetAt).getTime() - Date.now()) / 1_000));
-}
+export const CLIENT_RATE_LIMIT_COOLDOWN_SECONDS = 30;
 
-export function useRateLimitCooldown(resetAt?: string) {
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!resetAt) return;
-    const timer = window.setInterval(() => setTick((current) => current + 1), 250);
-    return () => window.clearInterval(timer);
-  }, [resetAt]);
-  const onReady = useCallback(() => setTick((current) => current + 1), []);
+export function useRateLimitCooldown(trigger?: object | null) {
+  const [readyTrigger, setReadyTrigger] = useState<object | null>();
+  const onReady = useCallback(() => setReadyTrigger(trigger), [trigger]);
   return {
-    coolingDown: Boolean(resetAt && secondsUntil(resetAt) > 0),
+    coolingDown: Boolean(trigger && readyTrigger !== trigger),
     onReady,
   };
 }
 
 export function RateLimitCountdown({
-  resetAt,
+  trigger,
   className = "text-sm font-semibold",
   onReady,
+  durationSeconds = CLIENT_RATE_LIMIT_COOLDOWN_SECONDS,
 }: {
-  resetAt: string;
+  trigger: object;
   className?: string;
   onReady?: () => void;
+  durationSeconds?: number;
 }) {
-  const [remaining, setRemaining] = useState(() => secondsUntil(resetAt));
+  const [countdown, setCountdown] = useState({ trigger, durationSeconds, remaining: durationSeconds });
+  const remaining = countdown.trigger === trigger && countdown.durationSeconds === durationSeconds ? countdown.remaining : durationSeconds;
 
   useEffect(() => {
-    const firstUpdate = window.setTimeout(() => setRemaining(secondsUntil(resetAt)), 0);
+    let next = durationSeconds;
     const timer = window.setInterval(() => {
-      const next = secondsUntil(resetAt);
-      setRemaining(next);
+      next = Math.max(0, next - 1);
+      setCountdown({ trigger, durationSeconds, remaining: next });
       if (next === 0) {
         window.clearInterval(timer);
         onReady?.();
       }
-    }, 250);
+    }, 1_000);
     return () => {
-      window.clearTimeout(firstUpdate);
       window.clearInterval(timer);
     };
-  }, [onReady, resetAt]);
+  }, [durationSeconds, onReady, trigger]);
 
   return (
     <span className={className} role="status" aria-live="polite">

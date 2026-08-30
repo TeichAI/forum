@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const state = rateLimitedActionState(rateLimit);
     const storageUnavailable = rateLimit.outcome === "storage_unavailable";
     return Response.json(
-      { error: state.message, ...(storageUnavailable ? {} : { retryAfterSeconds: rateLimit.retryAfterSeconds, resetAt: rateLimit.resetAt }) },
+      { error: state.message },
       {
         status: storageUnavailable ? 503 : 429,
         headers: { "Retry-After": String(storageUnavailable ? 30 : rateLimit.retryAfterSeconds), "Cache-Control": "private, no-store" },

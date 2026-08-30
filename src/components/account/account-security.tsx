@@ -347,15 +347,16 @@ function DeleteAccount({ username }: { username: string }) {
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [resetAt, setResetAt] = useState<string>();
-  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
+  const [limitTrigger, setLimitTrigger] = useState<object | null>(null);
+  const { coolingDown, onReady } = useRateLimitCooldown(limitTrigger);
   const requestDeletion = useCustomReverification(async (value: string) => {
     const response = await fetch("/api/account/delete", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ confirmation: value }),
     });
-    return response.json() as Promise<{ ok?: boolean; error?: string; retryAfterSeconds?: number; resetAt?: string }>;
+    const body = await response.json() as { ok?: boolean; error?: string };
+    return { ...body, limited: response.status === 429 || response.headers.has("Retry-After") };
   });
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -366,7 +367,7 @@ function DeleteAccount({ username }: { username: string }) {
     try {
       const body = await requestDeletion(confirmation);
       if (!body.ok) {
-        setResetAt(body.resetAt);
+        setLimitTrigger(body.limited ? {} : null);
         setError(body.error ?? "Account deletion failed.");
         setBusy(false);
         return;
@@ -390,7 +391,7 @@ function DeleteAccount({ username }: { username: string }) {
           <input id="delete-confirmation" className="input" autoComplete="off" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required disabled={busy} aria-describedby="delete-account-warning" />
           <p id="delete-account-warning" className="mt-2 text-xs muted">You will verify your identity before the account is deleted.</p>
           <FormAlert>{error}</FormAlert>
-          {resetAt ? <div className="mt-2" style={{ color: "var(--danger)" }}><RateLimitCountdown resetAt={resetAt} onReady={onReady} /></div> : null}
+          {limitTrigger ? <div className="mt-2" style={{ color: "var(--danger)" }}><RateLimitCountdown trigger={limitTrigger} onReady={onReady} /></div> : null}
           <button className="button button-danger mt-4" disabled={busy || coolingDown || confirmation !== username}><Trash2 size={16} aria-hidden="true" /> {busy ? "Deleting…" : "Delete my account"}</button>
         </form>
       )}

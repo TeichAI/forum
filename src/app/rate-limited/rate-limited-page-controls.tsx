@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { RateLimitCountdown } from "@/components/rate-limit-countdown";
+import { RateLimitCountdown, useRateLimitCooldown } from "@/components/rate-limit-countdown";
 
-export function RateLimitedPageControls({ resetAt }: { resetAt: string }) {
+export function RateLimitedPageControls() {
   const router = useRouter();
-  const [ready, setReady] = useState(() => new Date(resetAt).getTime() <= Date.now());
-  const onReady = useCallback(() => setReady(true), []);
+  const [trigger] = useState({});
+  const { coolingDown, onReady } = useRateLimitCooldown(trigger);
   return (
     <div className="mt-6 space-y-3">
-      <RateLimitCountdown resetAt={resetAt} onReady={onReady} />
-      <button className="button button-primary mx-auto" type="button" disabled={!ready} onClick={() => router.back()}>
+      <RateLimitCountdown trigger={trigger} onReady={onReady} />
+      <button className="button button-primary mx-auto" type="button" disabled={coolingDown} onClick={() => router.back()}>
         Try again
       </button>
     </div>

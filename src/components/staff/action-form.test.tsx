@@ -20,4 +20,13 @@ describe("StaffActionForm", () => {
     await user.click(screen.getByRole("button", { name: "Run action" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Action rejected.");
   });
+
+  it("disables staff controls during the fixed local rate-limit cooldown", async () => {
+    const user = userEvent.setup();
+    const action = vi.fn(async () => ({ status: "rate_limited" as const, message: "Please wait a moment and try again." }));
+    render(<StaffActionForm action={action}><button>Run action</button></StaffActionForm>);
+    await user.click(screen.getByRole("button", { name: "Run action" }));
+    expect(await screen.findByText("Try again in 30 seconds.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run action" })).toBeDisabled();
+  });
 });

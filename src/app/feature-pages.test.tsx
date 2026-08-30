@@ -209,7 +209,7 @@ describe("discussion page", () => {
 describe("member profile", () => {
   it("generates metadata and renders member actions without role-management controls", async () => {
     mocks.user.mockResolvedValue({ ...other, _count: { followers: 2, following: 3, threads: 4, replies: 5 }, followers: [] });
-    await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual(expect.objectContaining({ title: "Other", alternates: { canonical: "http://localhost:3000/members/other" } }));
+    await expect(memberMetadata({ params: Promise.resolve({ id: "other" }) })).resolves.toEqual(expect.objectContaining({ title: "Other", alternates: { canonical: "http://localhost:3000/members/other" }, robots: { index: false, follow: true } }));
     mocks.viewer.mockResolvedValue(admin);
     mocks.listThreads.mockResolvedValue({ items: [{ id: "thread", title: "Recent topic" }], nextCursor: null });
     render(await MemberPage({ params: Promise.resolve({ id: "other" }) }));
@@ -217,6 +217,38 @@ describe("member profile", () => {
     expect(screen.getByRole("link", { name: "Mail" })).toHaveAttribute("href", "/mail/compose?to=other");
     expect(screen.queryByRole("button", { name: "Update role" })).not.toBeInTheDocument();
     expect(screen.getByText("Recent topic")).toBeInTheDocument();
+    const profileQuery = mocks.user.mock.calls.at(-1)?.[0];
+    expect(profileQuery).toEqual(expect.objectContaining({
+      where: { id: "other", status: "ACTIVE" },
+      select: expect.objectContaining({ id: true, username: true, displayName: true, imageUrl: true, bio: true, role: true }),
+    }));
+    expect(profileQuery.select).not.toHaveProperty("email");
+    expect(profileQuery.select).not.toHaveProperty("clerkId");
+    expect(profileQuery.select).not.toHaveProperty("suspendedUntil");
+    expect(profileQuery.select).not.toHaveProperty("suspensionReason");
+  });
+
+  it("keeps anonymous attribution profiles public while hiding member-only facts and private sentinels", async () => {
+    mocks.viewer.mockResolvedValue(null);
+    mocks.user.mockResolvedValue({
+      ...other,
+      bio: "Public biography",
+      email: "PRIVATE_EMAIL_SENTINEL",
+      clerkId: "PRIVATE_CLERK_SENTINEL",
+      suspensionReason: "PRIVATE_MODERATION_SENTINEL",
+      _count: { followers: 22, following: 33 },
+      followers: [],
+    });
+    mocks.listThreads.mockResolvedValue({ items: [{ id: "thread", title: "Public topic" }], nextCursor: null });
+    const element = await MemberPage({ params: Promise.resolve({ id: "other" }) });
+    expect(JSON.stringify(element)).not.toMatch(/PRIVATE_(EMAIL|CLERK|MODERATION)_SENTINEL/);
+    render(element);
+    expect(screen.getByRole("heading", { name: "Other" })).toBeInTheDocument();
+    expect(screen.getByText("Public biography")).toBeInTheDocument();
+    expect(screen.getByText("Public topic")).toBeInTheDocument();
+    expect(screen.queryByText(/followers|following|Joined/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Follow/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Mail" })).not.toBeInTheDocument();
   });
 
   it("renders own profile and empty activity", async () => {

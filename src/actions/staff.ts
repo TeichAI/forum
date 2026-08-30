@@ -13,8 +13,6 @@ import { withSerializableRetry } from "@/lib/transactions";
 export type StaffActionState = {
   status: "idle" | "success" | "error" | "rate_limited";
   message?: string;
-  retryAfterSeconds?: number;
-  resetAt?: string;
 };
 
 const initialError = (message: string): StaffActionState => ({ status: "error", message });

@@ -82,7 +82,7 @@ beforeEach(() => {
   mocks.requireModerator.mockResolvedValue(moderator);
   mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
   mocks.uploadsEnabled.mockReturnValue(false);
-  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
+  mocks.consumeUserMutation.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
   mocks.db.moderationCase.findFirst.mockResolvedValue(null);
   mocks.db.moderationCase.create.mockResolvedValue({ id: "case-1" });
   mocks.db.moderationAction.create.mockResolvedValue({ id: "action-1" });
@@ -102,7 +102,7 @@ beforeEach(() => {
 describe("discussion actions", () => {
   it("stops every forum mutation before database access when the member is limited", async () => {
     mocks.consumeUserMutation.mockResolvedValue({
-      allowed: false, retryAfterSeconds: 12, resetAt: "2026-08-25T12:00:12.000Z", remaining: 0,
+      allowed: false, retryAfterSeconds: 12, remaining: 0,
     });
     const actions = [
       () => createReply(new FormData()),
@@ -121,7 +121,7 @@ describe("discussion actions", () => {
     ];
 
     for (const action of actions) {
-      await expect(action()).resolves.toEqual(expect.objectContaining({ status: "rate_limited", retryAfterSeconds: 12 }));
+      await expect(action()).resolves.toEqual({ status: "rate_limited", message: "You’re doing that a little too quickly. Please wait a moment and try again." });
     }
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
     expect(mocks.db.thread.findUnique).not.toHaveBeenCalled();
@@ -129,12 +129,10 @@ describe("discussion actions", () => {
   });
 
   it("returns a retryable state without touching content when the member is limited", async () => {
-    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12, resetAt: "2026-08-25T12:00:12.000Z", remaining: 0 });
+    mocks.consumeUserMutation.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12, remaining: 0 });
     await expect(createThread(form({ title: "A useful thread", body: "Body", categoryId: ids.category }))).resolves.toEqual({
       status: "rate_limited",
-      message: "You’re doing that a little too quickly. Try again in 12 seconds.",
-      retryAfterSeconds: 12,
-      resetAt: "2026-08-25T12:00:12.000Z",
+      message: "You’re doing that a little too quickly. Please wait a moment and try again.",
     });
     expect(mocks.db.category.findUnique).not.toHaveBeenCalled();
     expect(mocks.db.thread.create).not.toHaveBeenCalled();

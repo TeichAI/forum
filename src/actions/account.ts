@@ -17,8 +17,6 @@ export type AccountActionState = {
   status: "idle" | "success" | "error" | "rate_limited";
   message?: string;
   fieldErrors?: Partial<Record<"displayName" | "username" | "bio", string>>;
-  retryAfterSeconds?: number;
-  resetAt?: string;
 };
 
 export async function updateAccountProfile(_state: AccountActionState, formData: FormData): Promise<AccountActionState> {
@@ -64,8 +62,6 @@ export type SyncedAccountIdentity = {
   email?: string | null;
   imageUrl?: string | null;
   message?: string;
-  retryAfterSeconds?: number;
-  resetAt?: string;
 };
 
 export async function syncAccountIdentity(): Promise<SyncedAccountIdentity> {
@@ -73,7 +69,7 @@ export async function syncAccountIdentity(): Promise<SyncedAccountIdentity> {
   const rateLimit = await consumeUserMutation(localUser, RATE_LIMIT_POLICIES.account);
   if (!rateLimit.allowed) {
     const limited = rateLimitedActionState(rateLimit);
-    return { ok: false, message: limited.message, retryAfterSeconds: limited.retryAfterSeconds, resetAt: limited.resetAt };
+    return { ok: false, message: limited.message };
   }
   const { userId } = await auth();
   if (!userId || userId !== localUser.clerkId) return { ok: false, message: "Your account session is no longer available." };

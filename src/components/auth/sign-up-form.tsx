@@ -11,13 +11,14 @@ import { LegalConsent } from "./legal-consent";
 import { SocialConnections, type SocialConnection } from "./social-connections";
 
 const SUPPORTED_SSO_FIELDS = new Set(["email_address", "first_name", "last_name", "legal_accepted"]);
+type SignUpStage = "account_details" | "email_verification" | "missing_requirements";
 
 export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectUrl: string; ssoContinuation?: boolean }) {
   const { signUp, errors, fetchStatus } = useSignUp();
   const router = useRouter();
   const resumedSso = useRef(false);
-  const [verifying, setVerifying] = useState(false);
   const [continuingSso] = useState(ssoContinuation);
+  const [stage, setStage] = useState<SignUpStage>(ssoContinuation ? "missing_requirements" : "account_details");
   const [ssoBusy, setSsoBusy] = useState<SocialConnection["strategy"] | null>(null);
   const [email, setEmail] = useState(signUp.emailAddress ?? "");
   const [firstName, setFirstName] = useState(signUp.firstName ?? "");
@@ -30,10 +31,11 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
   const [blockedMode, setBlockedMode] = useState<"restricted" | "waitlist" | null>(null);
   const busy = fetchStatus === "fetching" || ssoBusy !== null;
   const missingFields = signUp.missingFields;
-  const showFirstName = continuingSso ? missingFields.includes("first_name") : signUp.requiredFields.includes("first_name") || signUp.optionalFields.includes("first_name");
-  const showLastName = continuingSso ? missingFields.includes("last_name") : signUp.requiredFields.includes("last_name") || signUp.optionalFields.includes("last_name");
-  const showEmail = !continuingSso || missingFields.includes("email_address");
-  const requiresLegal = continuingSso ? missingFields.includes("legal_accepted") : signUp.requiredFields.includes("legal_accepted");
+  const completingRequirements = stage === "missing_requirements";
+  const showFirstName = completingRequirements ? missingFields.includes("first_name") : signUp.requiredFields.includes("first_name") || signUp.optionalFields.includes("first_name");
+  const showLastName = completingRequirements ? missingFields.includes("last_name") : signUp.requiredFields.includes("last_name") || signUp.optionalFields.includes("last_name");
+  const showEmail = !completingRequirements || missingFields.includes("email_address");
+  const requiresLegal = signUp.requiredFields.includes("legal_accepted") || missingFields.includes("legal_accepted");
   const signInHref = redirectUrl === "/" ? "/sign-in" : `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
 
   const finish = useCallback(async () => {
@@ -65,7 +67,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       if (missingFields.length === 0 && signUp.unverifiedFields.includes("email_address")) {
         void signUp.verifications.sendEmailCode().then(({ error }) => {
           if (error) setLocalError(clerkErrorMessage(error));
-          else setVerifying(true);
+          else setStage("email_verification");
         });
       } else if (missingFields.length === 0) {
         setLocalError("Social sign-up could not be resumed. Return to sign up and try again.");
@@ -113,13 +115,13 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       const sent = await signUp.verifications.sendEmailCode();
       if (sent.error) return setLocalError(clerkErrorMessage(sent.error));
       setCode("");
-      setVerifying(true);
+      setStage("email_verification");
       return;
     }
     setLocalError("Your account needs an additional sign-up step that is not available here.");
   }
 
-  async function handleSsoSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleRequirementsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError("");
     if (requiresLegal && !acceptedTerms) return setLocalError("Please accept the account terms to continue.");
@@ -128,7 +130,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       ...(missingFields.includes("email_address") ? { emailAddress: email } : {}),
       ...(missingFields.includes("first_name") ? { firstName } : {}),
       ...(missingFields.includes("last_name") ? { lastName } : {}),
-      ...(missingFields.includes("legal_accepted") ? { legalAccepted: acceptedTerms } : {}),
+      ...(requiresLegal ? { legalAccepted: acceptedTerms } : {}),
     });
     if (error) return setLocalError(clerkErrorMessage(error, "We couldn't complete your account."));
     if (signUp.status === "complete") return finish();
@@ -137,7 +139,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
       const sent = await signUp.verifications.sendEmailCode();
       if (sent.error) return setLocalError(clerkErrorMessage(sent.error));
       setCode("");
-      setVerifying(true);
+      setStage("email_verification");
       return;
     }
 
@@ -152,19 +154,27 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
     setLocalError("");
     const { error } = await signUp.verifications.verifyEmailCode({ code });
     if (error) return setLocalError(clerkErrorMessage(error, "That verification code is not valid."));
-    if (signUp.status === "complete") await finish();
-    else setLocalError("Your email is verified, but your account still needs more information.");
+    if (signUp.status === "complete") return finish();
+    if (signUp.status === "missing_requirements") {
+      const unsupported = signUp.missingFields.filter((field) => !SUPPORTED_SSO_FIELDS.has(field));
+      if (!unsupported.length && signUp.missingFields.length) {
+        setAcceptedTerms(false);
+        setStage("missing_requirements");
+        return;
+      }
+    }
+    setLocalError("Your email is verified, but your account still needs information that this form does not support.");
   }
 
   async function goBack() {
     setLocalError("");
     setCode("");
     if (continuingSso) {
-      setVerifying(false);
+      setStage("missing_requirements");
       return;
     }
     await signUp.reset();
-    setVerifying(false);
+    setStage("account_details");
   }
 
   async function resendCode() {
@@ -175,7 +185,7 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
 
   const globalError = errors.global?.[0]?.longMessage ?? errors.global?.[0]?.message;
 
-  if (verifying) {
+  if (stage === "email_verification") {
     return (
       <>
         <button type="button" onClick={goBack} className="mb-5 flex items-center gap-1.5 text-sm font-bold muted hover:text-[var(--foreground)]"><ArrowLeft size={15} /> {continuingSso ? "Back to account details" : "Change email"}</button>
@@ -196,10 +206,11 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
 
   return (
     <>
-      {!continuingSso && <SocialConnections busy={busy} connecting={ssoBusy} onConnect={handleSocial} />}
+      {stage === "account_details" && !continuingSso ? <SocialConnections busy={busy} connecting={ssoBusy} onConnect={handleSocial} /> : null}
+      {completingRequirements && !continuingSso ? <div className="mb-6"><h2 className="text-xl font-black">Complete your account</h2><p className="mt-2 text-sm leading-6 muted">Your email is verified. Complete the remaining account requirements to join.</p></div> : null}
       <FormAlert>{localError || globalError}</FormAlert>
       {blockedMode && <p className="mb-5 text-sm leading-6 muted">{blockedMode === "waitlist" ? <>Teich is currently using a waitlist. <Link href="/waitlist" className="font-extrabold" style={{ color: "var(--brand)" }}>Join the waitlist</Link> to request access.</> : "Use the secure link in your invitation email to create your account."}</p>}
-      <form onSubmit={continuingSso ? handleSsoSubmit : handleSubmit} noValidate>
+      <form onSubmit={completingRequirements ? handleRequirementsSubmit : handleSubmit} noValidate>
         {(showFirstName || showLastName) && (
           <div className="grid gap-4 sm:grid-cols-2">
             {showFirstName && <div><label htmlFor="first-name" className="label">First name</label><input id="first-name" name="firstName" autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} className={`input ${errors.fields.firstName ? "!border-[var(--danger)]" : ""}`} required={continuingSso || signUp.requiredFields.includes("first_name")} aria-invalid={Boolean(errors.fields.firstName)} aria-describedby={errors.fields.firstName ? "first-name-error" : undefined} /><FieldMessage id="first-name-error">{errors.fields.firstName?.longMessage ?? errors.fields.firstName?.message}</FieldMessage></div>}
@@ -211,19 +222,19 @@ export function SignUpForm({ redirectUrl, ssoContinuation = false }: { redirectU
           <input id="email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className={`input ${errors.fields.emailAddress ? "!border-[var(--danger)]" : ""}`} placeholder="you@example.com" required aria-invalid={Boolean(errors.fields.emailAddress)} aria-describedby={errors.fields.emailAddress ? "email-error" : undefined} />
           <FieldMessage id="email-error">{errors.fields.emailAddress?.longMessage ?? errors.fields.emailAddress?.message}</FieldMessage>
         </div>}
-        {!continuingSso && <div className="mt-5">
+        {!completingRequirements && <div className="mt-5">
           <label htmlFor="password" className="label">Password</label>
           <PasswordInput id="password" name="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} required error={errors.fields.password?.longMessage ?? errors.fields.password?.message} aria-describedby={errors.fields.password ? "password-error" : undefined} />
           <FieldMessage id="password-error">{errors.fields.password?.longMessage ?? errors.fields.password?.message}</FieldMessage>
         </div>}
-        {!continuingSso && <div className="mt-5">
+        {!completingRequirements && <div className="mt-5">
           <label htmlFor="confirm-password" className="label">Confirm password</label>
           <PasswordInput id="confirm-password" name="confirmPassword" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" minLength={8} required error={confirmPassword && password !== confirmPassword ? "Passwords do not match" : undefined} aria-describedby={confirmPassword && password !== confirmPassword ? "confirm-password-error" : undefined} />
           <FieldMessage id="confirm-password-error">{confirmPassword && password !== confirmPassword ? "Passwords do not match." : undefined}</FieldMessage>
         </div>}
         {requiresLegal && <LegalConsent checked={acceptedTerms} onChange={setAcceptedTerms} />}
-        <div id="clerk-captcha" data-cl-theme="auto" data-cl-size="flexible" className="mt-4" />
-        <SubmitButton busy={busy} busyLabel={continuingSso ? "Completing account…" : "Creating account…"}>{continuingSso ? "Complete account" : "Create account"}</SubmitButton>
+        {stage === "account_details" ? <div id="clerk-captcha" data-cl-theme="auto" data-cl-size="flexible" className="mt-4" /> : null}
+        <SubmitButton busy={busy} busyLabel={completingRequirements ? "Completing account…" : "Creating account…"}>{completingRequirements ? "Complete account" : "Create account"}</SubmitButton>
       </form>
       <p className="mt-7 text-center text-sm muted">Already a member? <Link href={signInHref} className="font-extrabold" style={{ color: "var(--brand)" }}>Sign in</Link></p>
     </>

@@ -14,8 +14,8 @@ type ProfileSettingsProps = {
 
 export function ProfileSettings({ displayName, username, bio }: ProfileSettingsProps) {
   const [state, action] = useActionState(updateAccountProfile, { status: "idle" } satisfies AccountActionState);
-  const resetAt = state.status === "rate_limited" ? state.resetAt : undefined;
-  const { coolingDown, onReady } = useRateLimitCooldown(resetAt);
+  const rateState = state.status === "rate_limited" ? state : null;
+  const { coolingDown, onReady } = useRateLimitCooldown(rateState);
 
   return (
     <section className="card p-6 sm:p-8" aria-labelledby="profile-settings-heading">
@@ -34,7 +34,7 @@ export function ProfileSettings({ displayName, username, bio }: ProfileSettingsP
           role={state.status === "error" ? "alert" : "status"}
         >
           {state.message}
-          {resetAt ? <div className="mt-1"><RateLimitCountdown resetAt={resetAt} onReady={onReady} /></div> : null}
+          {rateState ? <div className="mt-1"><RateLimitCountdown trigger={rateState} onReady={onReady} /></div> : null}
         </div>
       )}
       <form action={action} className="space-y-5" noValidate>

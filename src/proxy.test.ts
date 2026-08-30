@@ -46,7 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.mode.mockReturnValue(false);
   mocks.auth.mockResolvedValue({ userId: null });
-  mocks.consume.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, resetAt: new Date().toISOString(), remaining: 10 });
+  mocks.consume.mockResolvedValue({ allowed: true, retryAfterSeconds: 0, remaining: 10 });
   mocks.clerk.mockImplementation(async (callback, req) => callback(mocks.auth, req));
 });
 
@@ -88,13 +88,14 @@ describe("request proxy", () => {
   });
 
   it("rewrites denied reads with 429 retry metadata", async () => {
-    mocks.consume.mockResolvedValue({ allowed: false, retryAfterSeconds: 17, resetAt: new Date().toISOString(), remaining: 0 });
+    mocks.consume.mockResolvedValue({ allowed: false, retryAfterSeconds: 17, remaining: 0 });
     const response = await proxy(request("/search", { ip: "203.0.113.4" }), {} as never);
     if (!response) throw new Error("Expected a proxy response");
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("17");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(response.headers.get("x-rewrite")).toContain("/rate-limited?retryAfter=17&resetAt=");
+    expect(response.headers.get("x-rewrite")).toBe("https://forum.example/rate-limited");
+    expect(response.headers.get("x-rewrite")).not.toMatch(/retryAfter|resetAt|17/);
   });
 
   it("matches application and API routes", () => {

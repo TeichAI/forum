@@ -11,10 +11,8 @@ function isHealthCheck(request: NextRequest) {
   return request.nextUrl.pathname === "/healthz" || request.nextUrl.pathname === "/readyz";
 }
 
-function limitedResponse(request: NextRequest, retryAfterSeconds: number, resetAt: string) {
+function limitedResponse(request: NextRequest, retryAfterSeconds: number) {
   const destination = new URL("/rate-limited", request.url);
-  destination.searchParams.set("retryAfter", String(retryAfterSeconds));
-  destination.searchParams.set("resetAt", resetAt);
   const response = NextResponse.rewrite(destination, { status: 429 });
   response.headers.set("Retry-After", String(retryAfterSeconds));
   response.headers.set("Cache-Control", "private, no-store");
@@ -35,7 +33,7 @@ const clerkProxy = clerkMiddleware(async (authResult, request) => {
     authenticated ? { kind: "user", value: userId! } : { kind: "ip", value: ip! },
     policies,
   );
-  return result.allowed ? NextResponse.next() : limitedResponse(request, result.retryAfterSeconds, result.resetAt);
+  return result.allowed ? NextResponse.next() : limitedResponse(request, result.retryAfterSeconds);
 }, {
   contentSecurityPolicy: {
     strict: true,

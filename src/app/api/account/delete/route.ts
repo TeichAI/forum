@@ -34,8 +34,8 @@ export async function POST(request: Request) {
       );
     }
     return Response.json(
-      { error: limited.message, retryAfterSeconds: limited.retryAfterSeconds, resetAt: limited.resetAt },
-      { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds), "Cache-Control": "private, no-store" } },
+      { error: limited.message },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds), "Cache-Control": "private, no-store" } },
     );
   }
 

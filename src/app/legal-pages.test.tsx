@@ -38,6 +38,9 @@ describe("legal pages", () => {
     expect(within(article!).getByText(/do not use private Mail or forum content to train/i)).toBeInTheDocument();
     expect(within(article!).getByText(/do not sell personal information for money/i)).toBeInTheDocument();
     expect(within(article!).getByText(/forum marks the local account deleted and clears its stored email address/i)).toBeInTheDocument();
+    expect(within(article!).getByText(/searchable member directory is available only to active signed-in members/i)).toBeInTheDocument();
+    expect(within(article!).getByText(/residual risk is accepted/i)).toBeInTheDocument();
+    expect(screen.getByText("August 30, 2026", { selector: "dd" })).toBeInTheDocument();
     expect(container.querySelector('a[href="#retention"]')).toHaveTextContent("Retention and account deletion");
     expect(within(article!).getAllByRole("link", { name: "Terms of Service" })[0]).toHaveAttribute("href", "/terms");
     expect(within(article!).getByRole("link", { name: "Teich Mail" })).toHaveAttribute("href", "/mail");
