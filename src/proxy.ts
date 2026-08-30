@@ -44,6 +44,8 @@ const clerkProxy = clerkMiddleware(async (authResult, request) => {
       "connect-src": ["https://*.uploadthing.com", "https://utfs.io", "https://*.ufs.sh"],
       "img-src": ["data:", "blob:", "https://utfs.io", "https://*.ufs.sh"],
       "object-src": ["none"],
+      "base-uri": ["self"],
+      "form-action": ["self"],
       "frame-ancestors": ["none"],
       "report-uri": ["/api/csp-report"],
     },
