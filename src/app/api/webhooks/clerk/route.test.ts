@@ -32,8 +32,8 @@ describe("Clerk webhook route", () => {
     headersMock.mockResolvedValue(new Headers({ "svix-id": "only-one" }));
     const { POST } = await import("./route");
     const response = await POST(new Request("http://localhost/api/webhooks/clerk", { method: "POST" }));
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "Missing signature" });
+    expect(response.status).toBe(404);
+    expect(response.body).toBeNull();
   });
 
   afterEach(() => {

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const svixId = headerList.get("svix-id");
   const svixTimestamp = headerList.get("svix-timestamp");
   const svixSignature = headerList.get("svix-signature");
-  if (!svixId || !svixTimestamp || !svixSignature) return Response.json({ error: "Missing signature" }, { status: 400 });
+  if (!svixId || !svixTimestamp || !svixSignature) return new Response(null, { status: 404 });
 
   let event: WebhookEvent;
   try {
