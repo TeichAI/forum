@@ -242,6 +242,7 @@ export async function updateThread(formData: FormData) {
   const body = bodySchema.parse(formData.get("body"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
   if (!thread || thread.authorId !== user.id) throw new Error("You cannot edit this discussion");
+  if (thread.isLocked) throw new Error("This thread is locked");
   await db.$transaction(async (tx) => {
     await tx.thread.update({ where: { id: threadId }, data: { title, body, editedAt: new Date() } });
     await claimAttachments(body, user.id, "THREAD", threadId, undefined, tx);
@@ -257,6 +258,7 @@ export async function deleteThread(formData: FormData) {
   const threadId = z.string().cuid().parse(formData.get("threadId"));
   const thread = await db.thread.findUnique({ where: { id: threadId } });
   if (!thread || thread.authorId !== user.id) throw new Error("You cannot delete this discussion");
+  if (thread.isLocked) throw new Error("This thread is locked");
   await db.thread.update({ where: { id: threadId }, data: { status: "DELETED", deletedAt: new Date() } });
   revalidatePath("/");
   redirect("/");
@@ -268,8 +270,9 @@ export async function updateReply(formData: FormData) {
   if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
   const body = bodySchema.parse(formData.get("body"));
-  const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
+  const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true, isLocked: true } } } });
   if (!reply || reply.authorId !== user.id) throw new Error("You cannot edit this reply");
+  if (reply.thread.isLocked) throw new Error("This thread is locked");
   await db.$transaction(async (tx) => {
     await tx.reply.update({ where: { id: replyId }, data: { body, editedAt: new Date() } });
     await claimAttachments(body, user.id, "REPLY", replyId, undefined, tx);
@@ -282,8 +285,9 @@ export async function deleteReply(formData: FormData) {
   const limited = await mutationLimit(user);
   if (limited) return limited;
   const replyId = z.string().cuid().parse(formData.get("replyId"));
-  const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true } } } });
+  const reply = await db.reply.findUnique({ where: { id: replyId }, include: { thread: { select: { slug: true, isLocked: true } } } });
   if (!reply || reply.authorId !== user.id) throw new Error("You cannot delete this reply");
+  if (reply.thread.isLocked) throw new Error("This thread is locked");
   await db.reply.update({ where: { id: replyId }, data: { status: "DELETED", deletedAt: new Date() } });
   revalidatePath(`/t/${reply.thread.slug}`);
 }
