@@ -386,8 +386,18 @@ describe("member and content ownership actions", () => {
     if (kind === "thread") await expect(promise).rejects.toThrow("redirect:/t/topic"); else await promise;
     expect(model.update).toHaveBeenCalled();
 
-    model.findUnique.mockResolvedValue({ authorId: ids.other, slug: "topic", thread: { slug: "topic" } });
+    model.findUnique.mockResolvedValue({ authorId: ids.other, slug: "topic", thread: { slug: "topic", isLocked: false } });
     await expect(action(form({ [idName]: targetId, ...values }))).rejects.toThrow("cannot edit");
+  });
+
+  it.each([
+    ["thread", updateThread, "threadId", "thread", { title: "Updated title", body: "Updated body" }],
+    ["reply", updateReply, "replyId", "reply", { body: "Updated reply" }],
+  ] as const)("rejects updating a %s when the thread is locked", async (kind, action, idName, modelName, values) => {
+    const model = mocks.db[modelName];
+    const targetId = kind === "thread" ? ids.thread : ids.reply;
+    model.findUnique.mockResolvedValue({ id: targetId, authorId: ids.user, isLocked: true, slug: "topic", thread: { slug: "topic", isLocked: true } });
+    await expect(action(form({ [idName]: targetId, ...values }))).rejects.toThrow("locked");
   });
 
   it.each([
@@ -401,8 +411,18 @@ describe("member and content ownership actions", () => {
     if (kind === "thread") await expect(promise).rejects.toThrow("redirect:/"); else await promise;
     expect(model.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "DELETED", deletedAt: expect.any(Date) }) }));
 
-    model.findUnique.mockResolvedValue({ authorId: ids.other, slug: "topic", thread: { slug: "topic" } });
+    model.findUnique.mockResolvedValue({ authorId: ids.other, slug: "topic", thread: { slug: "topic", isLocked: false } });
     await expect(action(form({ [idName]: targetId }))).rejects.toThrow("cannot delete");
+  });
+
+  it.each([
+    ["thread", deleteThread, "threadId", "thread"],
+    ["reply", deleteReply, "replyId", "reply"],
+  ] as const)("rejects deleting a %s when the thread is locked", async (kind, action, idName, modelName) => {
+    const model = mocks.db[modelName];
+    const targetId = kind === "thread" ? ids.thread : ids.reply;
+    model.findUnique.mockResolvedValue({ authorId: ids.user, isLocked: true, slug: "topic", thread: { slug: "topic", isLocked: true } });
+    await expect(action(form({ [idName]: targetId }))).rejects.toThrow("locked");
   });
 });
 
