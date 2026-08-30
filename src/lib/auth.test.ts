@@ -56,6 +56,20 @@ describe("syncCurrentUser", () => {
     expect(upsertMock).not.toHaveBeenCalled();
   });
 
+  it("ignores poisoned unsafe metadata for an existing user", async () => {
+    const existing = { id: "local_user", clerkId: "user_test", role: "ADMIN" };
+    authMock.mockResolvedValue({
+      userId: "user_test",
+      sessionClaims: {
+        forum_role: "member",
+        unsafe_metadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+      },
+    });
+    findUniqueMock.mockResolvedValue(existing);
+
+    await expect(syncCurrentUser()).resolves.toEqual({ ...existing, role: "MEMBER" });
+  });
+
   it("provisions a missing user idempotently without a webhook", async () => {
     const created = { id: "local_user", clerkId: "user_test", username: "owen_teich" };
     authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: "moderator" } });
@@ -86,6 +100,28 @@ describe("syncCurrentUser", () => {
         role: "ADMIN",
       },
     });
+  });
+
+  it("does not synchronize a poisoned Clerk unsafeMetadata role", async () => {
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: { forum_role: "member" } });
+    findUniqueMock.mockResolvedValue(null);
+    currentUserMock.mockResolvedValue({
+      username: "member",
+      firstName: null,
+      lastName: null,
+      imageUrl: null,
+      primaryEmailAddressId: null,
+      emailAddresses: [],
+      publicMetadata: { role: "member" },
+      unsafeMetadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+    });
+    upsertMock.mockResolvedValue({ id: "created", clerkId: "user_test", role: "MEMBER" });
+
+    await expect(syncCurrentUser()).resolves.toEqual(expect.objectContaining({ role: "MEMBER" }));
+    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ role: "MEMBER" }),
+      create: expect.objectContaining({ role: "MEMBER" }),
+    }));
   });
 
   it("loads a local E2E identity without consulting Clerk", async () => {
@@ -167,6 +203,25 @@ describe("viewer authorization", () => {
   it("returns the synchronized viewer", async () => {
     authMock.mockResolvedValue({ userId: null });
     await expect(getViewer()).resolves.toBeNull();
+  });
+
+  it("keeps every production authorization entry point at member privileges after unsafe metadata poisoning", async () => {
+    const poisonedClaims = {
+      forum_role: "member",
+      unsafe_metadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+    };
+    const localUser = { id: "local", clerkId: "user_test", status: "ACTIVE", suspendedUntil: null, role: "ADMIN" };
+    authMock.mockResolvedValue({ userId: "user_test", sessionClaims: poisonedClaims });
+    findUniqueMock.mockResolvedValue(localUser);
+    getUserMock.mockResolvedValue({
+      publicMetadata: { role: "member" },
+      unsafeMetadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+    });
+
+    await expect(getViewer()).resolves.toEqual(expect.objectContaining({ role: "MEMBER" }));
+    await expect(requireUser()).resolves.toEqual(expect.objectContaining({ role: "MEMBER" }));
+    await expect(requireModerator()).rejects.toThrow("redirect:/");
+    await expect(requireAdmin()).rejects.toThrow("redirect:/");
   });
 
   it("treats suspended staff as anonymous for page visibility", async () => {
@@ -295,6 +350,14 @@ describe("getVerifiedUserRole", () => {
     getUserMock.mockResolvedValue({ publicMetadata: { role: "admin" } });
     await expect(getVerifiedUserRole({ clerkId: "user_target", role: "MEMBER" })).resolves.toBe("ADMIN");
     expect(getUserMock).toHaveBeenCalledWith("user_target");
+  });
+
+  it("ignores unsafe metadata when verifying a staff role", async () => {
+    getUserMock.mockResolvedValue({
+      publicMetadata: { role: "member" },
+      unsafeMetadata: { role: "admin", claimedRole: "ADMIN", isModerator: true },
+    });
+    await expect(getVerifiedUserRole({ clerkId: "user_target", role: "ADMIN" })).resolves.toBe("MEMBER");
   });
 
   it("treats a missing Clerk metadata role as member", async () => {

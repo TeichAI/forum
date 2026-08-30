@@ -13,7 +13,7 @@ Signed-in users are added to the local database on their first visit, so local d
 
 ## Clerk forum roles
 
-Clerk user public metadata is the source of truth for global forum roles. In the Clerk Dashboard, customize the session token to include this claim:
+Clerk user public metadata is the source of truth for global forum roles. In the Clerk Dashboard, customize the session token with the exact contents of [`config/clerk-session-claims.json`](config/clerk-session-claims.json):
 
 ```json
 {
@@ -23,7 +23,14 @@ Clerk user public metadata is the source of truth for global forum roles. In the
 
 Assign roles from a user’s public metadata in the Clerk Dashboard. Use `{"role":"admin"}` for an administrator or `{"role":"moderator"}` for a moderator. `{"role":"member"}` and an absent role both produce an ordinary member. Unknown or malformed values also fall back to member access.
 
-The signed `forum_role` session claim authorizes ordinary member behavior. Moderator and administrator entry points additionally fetch the current Clerk public metadata and deny access if that verification fails, so a staff downgrade takes effect immediately. The Prisma `User.role` field is only a denormalized cache used for public badges and bulk forum queries. Role assignments cannot be changed from the forum UI. See Clerk’s [global RBAC guide](https://clerk.com/docs/guides/secure/basic-rbac) and [session-token guidance](https://clerk.com/docs/guides/sessions/customize-session-tokens).
+The trusted authorization sources are deliberately limited:
+
+- The signed `forum_role` session claim, sourced only from `user.public_metadata.role`, authorizes ordinary signed-in behavior and optimistic role-aware rendering.
+- Server-fetched Clerk `publicMetadata.role` is the live authority for every moderator and administrator entry point. A failed verification denies staff access, so a staff downgrade takes effect immediately.
+- Signed Clerk webhooks copy `public_metadata.role` into Prisma `User.role`. This database field is only a denormalized cache for public badges and bulk forum queries; production authorization must not trust it by itself.
+- Local E2E identities use the database role only while the explicit, non-production E2E authentication mode is enabled.
+
+Clerk `unsafeMetadata` (webhook field `unsafe_metadata`) is client-writable and permanently untrusted. It must never be used for authorization, copied into `forum_role`, or synchronized into the database role. User-controlled profile or preference data stored there must be validated and kept separate from trusted identity data. Role assignments cannot be changed from the forum UI; trusted role writes belong in Clerk `publicMetadata`, `privateMetadata`, or an application-owned database workflow. See Clerk’s [metadata access model](https://clerk.com/docs/guides/users/extending), [global RBAC guide](https://clerk.com/docs/guides/secure/basic-rbac), and [session-token guidance](https://clerk.com/docs/guides/sessions/customize-session-tokens).
 
 ## Clerk access modes
 
