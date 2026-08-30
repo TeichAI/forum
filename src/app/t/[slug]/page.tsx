@@ -60,6 +60,7 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
   const replyPage = await listReplyBranches({
     threadId: thread.id,
     viewerId: viewer?.id,
+    viewerIsStaff: canModerate(viewer),
     cursor: replyParams.replyCursor,
     branchId: replyParams.branch,
     branchPage: Number(replyParams.branchPage) || 0,
@@ -87,6 +88,11 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
         <span>Discussion</span>
       </div>
 
+      {thread.status === "HIDDEN" && canModerate(viewer) ? (
+        <div className="card mb-4 border-yellow-500 bg-yellow-50 px-5 py-3 text-sm font-bold text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200" role="status">
+          This discussion is hidden from the community. Only staff can see it.
+        </div>
+      ) : null}
       <article className="card">
         <header className="border-b p-5 sm:p-8" style={{ borderColor: "var(--line)" }}>
           <div className="flex items-start gap-3">
@@ -180,7 +186,7 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
                   style={{ "--reply-depth-desktop": indent.desktop, "--reply-depth-mobile": indent.mobile } as React.CSSProperties}
                 >
                   <article id={`reply-${reply.id}`} className="card scroll-mt-24 p-5 sm:p-6">
-                    {reply.status === "PUBLISHED" && reply.author.status === "ACTIVE" ? (
+                    {(reply.status === "PUBLISHED" && reply.author.status === "ACTIVE") || (reply.status === "HIDDEN" && canModerate(viewer)) ? (
                       <div className="flex gap-3">
                         <Link href={`/members/${reply.author.id}`}>
                           <Avatar src={reply.author.imageUrl} name={reply.author.displayName} />
@@ -192,6 +198,7 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
                             <span className="muted">
                               · {formatDistanceToNow(reply.createdAt, { addSuffix: true })}{reply.editedAt ? " · edited" : ""}
                             </span>
+                            {reply.status === "HIDDEN" ? <span className="pill text-yellow-800 dark:text-yellow-200" style={{ background: "var(--yellow-soft, #fef9c3)" }}>hidden</span> : null}
                             <a href={`#reply-${reply.id}`} className="ml-auto text-xs muted">#{index + 1}</a>
                           </div>
                           {parentReply ? (
