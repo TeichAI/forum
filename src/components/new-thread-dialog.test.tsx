@@ -185,4 +185,35 @@ describe("NewThreadDialogProvider", () => {
     expect(screen.getByRole("option", { name: "News" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Staff" })).toBeInTheDocument();
   });
+
+  it("shows poll controls only to staff and resets the complete poll draft", async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<Composer />);
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    expect(screen.queryByRole("checkbox", { name: "Add a poll" })).not.toBeInTheDocument();
+    unmount();
+
+    render(<Composer viewerRole="MODERATOR" />);
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    await user.click(screen.getByRole("checkbox", { name: "Add a poll" }));
+    expect(screen.getByLabelText("Poll question")).toHaveAttribute("maxlength", "240");
+    expect(screen.getByLabelText("Poll choice 1")).toBeRequired();
+    expect(screen.getByLabelText("Poll choice 2")).toBeRequired();
+    expect(screen.getByLabelText("Poll duration")).toHaveValue("7d");
+    await user.type(screen.getByLabelText("Poll question"), "A drafted question");
+    await user.type(screen.getByLabelText("Poll choice 1"), "First");
+    await user.type(screen.getByLabelText("Poll choice 2"), " first ");
+    expect(screen.getAllByText("Choices must be unique.")).toHaveLength(2);
+    expect(screen.getByLabelText("Poll choice 2")).toHaveAttribute("aria-invalid", "true");
+    await user.clear(screen.getByLabelText("Poll choice 2"));
+    await user.click(screen.getByRole("button", { name: "Add choice" }));
+    expect(screen.getByLabelText("Poll choice 3")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove poll choice 2" }));
+    expect(screen.queryByLabelText("Poll choice 3")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close new thread dialog" }));
+    await user.click(screen.getByRole("button", { name: "Header new thread" }));
+    expect(screen.getByRole("checkbox", { name: "Add a poll" })).not.toBeChecked();
+    expect(screen.queryByLabelText("Poll question")).not.toBeInTheDocument();
+  });
 });

@@ -14,6 +14,7 @@ vi.mock("@/lib/upload-capability", () => ({ uploadsEnabled: vi.fn(() => authStat
 import {
   createReply, createThread, deleteReply, toggleBookmark, toggleFollow,
   reportContent, toggleReplyReaction, toggleThreadReaction,
+  voteInPoll,
 } from "./forum";
 import { db } from "@/lib/db";
 import { createTestCategory, createTestThread, createTestUser } from "@/test/integration-factories";
@@ -21,6 +22,12 @@ import { createTestCategory, createTestThread, createTestUser } from "@/test/int
 function form(values: Record<string, string>) {
   const data = new FormData();
   for (const [key, value] of Object.entries(values)) data.set(key, value);
+  return data;
+}
+
+function pollForm(values: Record<string, string>, options: string[]) {
+  const data = form(values);
+  for (const option of options) data.append("pollOptions", option);
   return data;
 }
 
@@ -92,6 +99,58 @@ describe("forum actions against PostgreSQL", () => {
     expect(await db.bookmark.count({ where: { threadId: thread.id } })).toBe(1);
     expect(await db.follow.count({ where: { followingId: author.id } })).toBe(1);
     expect(await db.notification.count({ where: { recipientId: author.id } })).toBe(3);
+  });
+
+  it("creates a staff poll atomically, keeps one changeable vote per user, expires, and cascades", async () => {
+    const [staff, member] = await Promise.all([
+      createTestUser({ role: "MODERATOR" }),
+      createTestUser({ role: "MEMBER" }),
+    ]);
+    const category = await createTestCategory();
+    const pollData = () => pollForm({
+      title: "Database staff poll", body: "Choose below", categoryId: category.id,
+      hasPoll: "true", pollQuestion: "Which database?", pollDuration: "1d",
+    }, ["PostgreSQL", "SQLite", "MySQL"]);
+
+    authState.user = member;
+    await expect(createThread(pollData())).rejects.toThrow("Only staff");
+    expect(await db.thread.count({ where: { title: "Database staff poll" } })).toBe(0);
+
+    authState.user = staff;
+    await expect(createThread(pollData())).rejects.toThrow("redirect:/t/");
+    const thread = await db.thread.findFirstOrThrow({
+      where: { title: "Database staff poll" },
+      include: { poll: { include: { options: { orderBy: { position: "asc" } } } } },
+    });
+    expect(thread.poll).toEqual(expect.objectContaining({ question: "Which database?" }));
+    expect(thread.poll?.options.map(({ text, position }) => ({ text, position }))).toEqual([
+      { text: "PostgreSQL", position: 0 },
+      { text: "SQLite", position: 1 },
+      { text: "MySQL", position: 2 },
+    ]);
+    const [first, second] = thread.poll!.options;
+
+    authState.user = member;
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: thread.poll!.id, optionId: first!.id }))).resolves.toEqual(expect.objectContaining({ status: "success" }));
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: thread.poll!.id, optionId: second!.id }))).resolves.toEqual(expect.objectContaining({ status: "success" }));
+    expect(await db.pollVote.findMany({ where: { pollId: thread.poll!.id, userId: member.id } })).toEqual([
+      expect.objectContaining({ optionId: second!.id }),
+    ]);
+
+    await Promise.all([
+      voteInPoll({ status: "idle" }, form({ pollId: thread.poll!.id, optionId: first!.id })),
+      voteInPoll({ status: "idle" }, form({ pollId: thread.poll!.id, optionId: second!.id })),
+    ]);
+    expect(await db.pollVote.count({ where: { pollId: thread.poll!.id, userId: member.id } })).toBe(1);
+
+    await db.poll.update({ where: { id: thread.poll!.id }, data: { expiresAt: new Date(Date.now() - 1) } });
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: thread.poll!.id, optionId: first!.id }))).resolves.toEqual({ status: "error", message: "This poll is closed." });
+    expect(await db.pollVote.count({ where: { pollId: thread.poll!.id } })).toBe(1);
+
+    await db.thread.delete({ where: { id: thread.id } });
+    expect(await db.poll.count({ where: { id: thread.poll!.id } })).toBe(0);
+    expect(await db.pollOption.count({ where: { pollId: thread.poll!.id } })).toBe(0);
+    expect(await db.pollVote.count({ where: { pollId: thread.poll!.id } })).toBe(0);
   });
 
   it("persists an unlimited-depth branch, notifies direct parents, bumps the thread, and preserves descendants of a removed reply", async () => {

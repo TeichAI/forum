@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => {
     report: { findUnique: method(), upsert: method(), update: method() },
     moderationCase: { findFirst: method(), create: method(), update: method() },
     moderationAction: { create: method() },
+    poll: { findUnique: method() },
+    pollVote: { findUnique: method(), upsert: method() },
     $transaction: vi.fn(),
   };
   return {
@@ -33,6 +35,7 @@ const mocks = vi.hoisted(() => {
     consumeUserMutation: vi.fn(),
     revalidatePath: vi.fn(),
     redirect: vi.fn(),
+    pollSnapshot: vi.fn(),
   };
 });
 
@@ -49,11 +52,15 @@ vi.mock("@/lib/rate-limit", async (importOriginal) => {
 });
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("@/lib/poll-data", () => ({ getPollSnapshot: mocks.pollSnapshot }));
+
+import { RATE_LIMIT_POLICIES } from "@/lib/rate-limit";
 
 import {
   blockMember, createReply, createThread, deleteReply, deleteThread, markNotificationsRead,
   reportContent, toggleBookmark, toggleFollow, toggleReplyReaction,
   toggleThreadLock, toggleThreadReaction, updateReply, updateThread,
+  voteInPoll,
 } from "./forum";
 
 const ids = {
@@ -66,6 +73,8 @@ const ids = {
   parentReply: "cm000000000000000000000007",
   mailEntry: "cm000000000000000000000008",
   report: "cm000000000000000000000009",
+  poll: "cm000000000000000000000010",
+  option: "cm000000000000000000000011",
 };
 const member = { id: ids.user, role: "MEMBER", status: "ACTIVE" };
 const moderator = { id: ids.admin, role: "ADMIN", status: "ACTIVE" };
@@ -73,6 +82,12 @@ const moderator = { id: ids.admin, role: "ADMIN", status: "ACTIVE" };
 function form(values: Record<string, string | undefined>) {
   const data = new FormData();
   for (const [key, value] of Object.entries(values)) if (value !== undefined) data.set(key, value);
+  return data;
+}
+
+function pollForm(values: Record<string, string>, options: string[]) {
+  const data = form(values);
+  for (const option of options) data.append("pollOptions", option);
   return data;
 }
 
@@ -92,6 +107,11 @@ beforeEach(() => {
   mocks.db.tagAlias.findMany.mockResolvedValue([]);
   mocks.db.tag.findMany.mockResolvedValue([]);
   mocks.db.tag.create.mockImplementation(async ({ data }: { data: { slug: string; name: string } }) => ({ id: `tag-${data.slug}`, ...data }));
+  mocks.pollSnapshot.mockResolvedValue({
+    id: ids.poll, question: "Pick one", expiresAt: "2026-09-01T00:00:00.000Z", status: "ACTIVE",
+    totalVotes: 1, selectedOptionId: ids.option,
+    options: [{ id: ids.option, text: "First", position: 0, voteCount: 1, percentage: 100 }],
+  });
   mocks.redirect.mockImplementation((path: string) => { throw new Error(`redirect:${path}`); });
   mocks.db.$transaction.mockImplementation(async (input: unknown) => {
     if (typeof input === "function") return input(mocks.db);
@@ -118,6 +138,7 @@ describe("discussion actions", () => {
       () => reportContent(new FormData()),
       () => markNotificationsRead(),
       () => toggleThreadLock(new FormData()),
+      () => voteInPoll({ status: "idle" }, new FormData()),
     ];
 
     for (const action of actions) {
@@ -161,6 +182,71 @@ describe("discussion actions", () => {
     }));
     expect(mocks.db.attachment.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["attachment-1"] } }, data: { context: "THREAD", targetId: ids.thread } });
     expect(mocks.db.notification.createMany).toHaveBeenCalledWith({ data: [{ type: "MENTION", recipientId: ids.other, actorId: ids.user, threadId: ids.thread }] });
+  });
+
+  it("lets verified staff attach a validated poll atomically", async () => {
+    mocks.requireUser.mockResolvedValue(moderator);
+    mocks.getVerifiedUserRole.mockResolvedValue("ADMIN");
+    mocks.db.category.findUnique.mockResolvedValue({ id: ids.category, postingPolicy: "OPEN", archivedAt: null });
+    mocks.db.thread.create.mockResolvedValue({ id: ids.thread, slug: "staff-poll" });
+
+    await expect(createThread(pollForm({
+      title: "A staff poll", body: "Vote below", categoryId: ids.category,
+      hasPoll: "true", pollQuestion: "Which option?", pollDuration: "7d",
+    }, ["First", "Second"]))).rejects.toThrow("redirect:/t/staff-poll");
+
+    expect(mocks.getVerifiedUserRole).toHaveBeenCalledWith(moderator);
+    expect(mocks.db.thread.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      poll: { create: expect.objectContaining({
+        question: "Which option?",
+        expiresAt: expect.any(Date),
+        options: { create: [{ text: "First", position: 0 }, { text: "Second", position: 1 }] },
+      }) },
+    }) }));
+  });
+
+  it("rejects member polls and invalid or duplicate choices", async () => {
+    mocks.getVerifiedUserRole.mockResolvedValue("MEMBER");
+    const memberPoll = pollForm({ title: "A member poll", body: "Vote", categoryId: ids.category, hasPoll: "true", pollQuestion: "Question", pollDuration: "1d" }, ["First", "Second"]);
+    await expect(createThread(memberPoll)).rejects.toThrow("Only staff");
+
+    const duplicatePoll = pollForm({ title: "A staff poll", body: "Vote", categoryId: ids.category, hasPoll: "true", pollQuestion: "Question", pollDuration: "1d" }, ["Same", " same "]);
+    await expect(createThread(duplicatePoll)).rejects.toThrow("unique");
+    expect(mocks.db.thread.create).not.toHaveBeenCalled();
+  });
+
+  it("records and changes one current vote, then returns fresh results", async () => {
+    mocks.db.poll.findUnique.mockResolvedValue({
+      id: ids.poll, expiresAt: new Date(Date.now() + 60_000), options: [{ id: ids.option }],
+      thread: { slug: "poll-thread", status: "PUBLISHED", author: { status: "ACTIVE" }, category: { archivedAt: null } },
+    });
+
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: ids.poll, optionId: ids.option }))).resolves.toEqual(expect.objectContaining({ status: "success", message: "Vote recorded." }));
+    expect(mocks.consumeUserMutation).toHaveBeenCalledWith(member, RATE_LIMIT_POLICIES.interaction, [RATE_LIMIT_POLICIES.pollVote]);
+    expect(mocks.db.pollVote.upsert).toHaveBeenCalledWith({
+      where: { pollId_userId: { pollId: ids.poll, userId: ids.user } },
+      update: { optionId: ids.option },
+      create: { pollId: ids.poll, optionId: ids.option, userId: ids.user },
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/t/poll-thread");
+  });
+
+  it("rejects closed polls, foreign choices, and inaccessible poll threads", async () => {
+    const base = {
+      id: ids.poll, expiresAt: new Date(Date.now() + 60_000), options: [{ id: ids.option }],
+      thread: { slug: "poll-thread", status: "PUBLISHED", author: { status: "ACTIVE" }, category: { archivedAt: null } },
+    };
+    mocks.db.poll.findUnique.mockResolvedValueOnce({ ...base, expiresAt: new Date(Date.now() - 1) });
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: ids.poll, optionId: ids.option }))).resolves.toEqual({ status: "error", message: "This poll is closed." });
+    mocks.db.poll.findUnique.mockResolvedValueOnce({ ...base, options: [] });
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: ids.poll, optionId: ids.option }))).resolves.toEqual({ status: "error", message: "Choose a valid poll option." });
+    mocks.db.poll.findUnique.mockResolvedValueOnce({ ...base, thread: { ...base.thread, status: "HIDDEN" } });
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: ids.poll, optionId: ids.option }))).resolves.toEqual({ status: "error", message: "This poll is unavailable." });
+    mocks.requireUser.mockResolvedValueOnce({ ...moderator, clerkId: "cached-staff" });
+    mocks.getVerifiedUserRole.mockResolvedValueOnce("MEMBER");
+    mocks.db.poll.findUnique.mockResolvedValueOnce({ ...base, thread: { ...base.thread, status: "HIDDEN" } });
+    await expect(voteInPoll({ status: "idle" }, form({ pollId: ids.poll, optionId: ids.option }))).resolves.toEqual({ status: "error", message: "This poll is unavailable." });
+    expect(mocks.db.pollVote.upsert).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown category and malformed thread input", async () => {

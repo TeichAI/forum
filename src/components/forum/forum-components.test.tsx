@@ -23,6 +23,7 @@ const thread = {
   category: { ...category, postingPolicy: "ANNOUNCEMENTS" as const },
   tags: [{ threadId: "thread", tagId: "tag", tag: { id: "tag", name: "Testing", slug: "testing", createdAt: new Date() } }],
   _count: { replies: 2, upvotes: 3, dislikes: 2, bookmarks: 4 },
+  poll: null,
 };
 
 describe("forum display components", () => {
@@ -53,6 +54,13 @@ describe("forum display components", () => {
     expect(screen.getByLabelText("Announcements")).toHaveAttribute("title", "Only admins can start discussions; everyone can comment.");
     expect(screen.getByLabelText("3 upvotes")).toHaveTextContent("3");
     expect(screen.getByLabelText("2 dislikes")).toHaveTextContent("2");
+  });
+
+  it("labels active and closed polls in discussion lists", () => {
+    const { rerender } = render(<ThreadCard thread={{ ...thread, poll: { expiresAt: new Date(Date.now() + 60_000) } } as never} />);
+    expect(screen.getByText("Live poll")).toBeInTheDocument();
+    rerender(<ThreadCard thread={{ ...thread, poll: { expiresAt: new Date(Date.now() - 60_000) } } as never} />);
+    expect(screen.getByText("Poll closed")).toBeInTheDocument();
   });
 
   it("renders an accessible report form with its target context", async () => {

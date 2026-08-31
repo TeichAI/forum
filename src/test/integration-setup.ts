@@ -1,6 +1,8 @@
 import { afterAll, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 
+process.env.APP_ENV = "development";
+
 beforeEach(async () => {
   await db.$executeRawUnsafe(`TRUNCATE TABLE
     "RateLimitBucket", "Attachment", "Block", "StaffNote", "Notification", "ModerationAction", "Report", "ModerationCase", "TagAlias", "ModerationSettings",

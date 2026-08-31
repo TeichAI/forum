@@ -19,10 +19,31 @@ import { parseMentions, safeReturnPath, threadSlug } from "@/lib/utils";
 import { inaccessible, publicReplyWhere, publicThreadWhere } from "@/lib/access";
 import { resolveCanonicalTags } from "@/lib/tags";
 import { withSerializableRetry } from "@/lib/transactions";
+import { getPollSnapshot } from "@/lib/poll-data";
+import { canAccessPollThread } from "@/lib/poll-access";
+import { pollDurationMilliseconds, type PollDuration, type PollSnapshot } from "@/lib/polls";
 
 const titleSchema = z.string().trim().min(5).max(160);
 const bodySchema = z.string().trim().min(2).max(50_000);
 const reactionSchema = z.enum(["UPVOTE", "DISLIKE"]);
+const pollDurationSchema = z.enum(["1h", "1d", "3d", "7d", "14d", "30d"]);
+
+export type PollActionState =
+  | { status: "idle"; message?: undefined; poll?: undefined }
+  | { status: "success"; message: string; poll: PollSnapshot }
+  | { status: "error" | "rate_limited"; message: string; poll?: undefined };
+
+function parsePollInput(formData: FormData) {
+  if (formData.get("hasPoll") !== "true") return null;
+  const question = z.string().trim().min(1, "Enter a poll question.").max(240).parse(formData.get("pollQuestion"));
+  const duration = pollDurationSchema.parse(formData.get("pollDuration")) as PollDuration;
+  const options = formData.getAll("pollOptions").map((option) => z.string().trim().max(120).parse(option)).filter(Boolean);
+  if (options.length < 2 || options.length > 10) throw new Error("Polls require between 2 and 10 choices.");
+  if (new Set(options.map((option) => option.toLowerCase())).size !== options.length) {
+    throw new Error("Poll choices must be unique.");
+  }
+  return { question, duration, options };
+}
 
 async function mutationLimit(
   user: { clerkId: string; role: string },
@@ -55,6 +76,14 @@ export async function createThread(formData: FormData) {
   const categoryId = z.string().cuid().parse(formData.get("categoryId"));
   const rawTags = z.string().max(180).catch("").parse(formData.get("tags") ?? "");
   const tags = rawTags.split(",");
+  const pollInput = parsePollInput(formData);
+
+  if (pollInput) {
+    const verifiedRole = await getVerifiedUserRole(user);
+    if (verifiedRole !== "MODERATOR" && verifiedRole !== "ADMIN") {
+      throw new Error("Only staff can attach polls to discussions.");
+    }
+  }
 
   const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true, postingPolicy: true, archivedAt: true } });
   if (!category || category.archivedAt) throw new Error("Category not found");
@@ -72,6 +101,13 @@ export async function createThread(formData: FormData) {
         authorId: user.id,
         categoryId,
         tags: { create: canonicalTags.map((tag) => ({ tagId: tag.id })) },
+        poll: pollInput ? {
+          create: {
+            question: pollInput.question,
+            expiresAt: new Date(Date.now() + pollDurationMilliseconds(pollInput.duration)),
+            options: { create: pollInput.options.map((text, position) => ({ text, position })) },
+          },
+        } : undefined,
       },
     });
     await claimAttachments(body, user.id, "THREAD", created.id, undefined, tx);
@@ -79,6 +115,52 @@ export async function createThread(formData: FormData) {
     return created;
   }, { retryUnique: true });
   redirect(`/t/${thread.slug}`);
+}
+
+export async function voteInPoll(_previousState: PollActionState, formData: FormData): Promise<PollActionState> {
+  const user = await requireUser();
+  const limited = await mutationLimit(user, RATE_LIMIT_POLICIES.interaction, [RATE_LIMIT_POLICIES.pollVote]);
+  if (limited) return limited;
+  const parsed = z.object({
+    pollId: z.string().cuid(),
+    optionId: z.string().cuid(),
+  }).safeParse({ pollId: formData.get("pollId"), optionId: formData.get("optionId") });
+  if (!parsed.success) return { status: "error", message: "Choose a valid poll option." };
+
+  let threadPath: string | null = null;
+  const result = await withSerializableRetry(async (tx): Promise<PollActionState> => {
+    const poll = await tx.poll.findUnique({
+      where: { id: parsed.data.pollId },
+      select: {
+        id: true,
+        expiresAt: true,
+        thread: {
+          select: {
+            slug: true,
+            status: true,
+            author: { select: { status: true } },
+            category: { select: { archivedAt: true } },
+          },
+        },
+        options: { where: { id: parsed.data.optionId }, select: { id: true } },
+      },
+    });
+    if (!poll || !await canAccessPollThread(poll.thread, user)) return { status: "error", message: "This poll is unavailable." };
+    if (poll.expiresAt <= new Date()) return { status: "error", message: "This poll is closed." };
+    if (!poll.options.length) return { status: "error", message: "Choose a valid poll option." };
+
+    await tx.pollVote.upsert({
+      where: { pollId_userId: { pollId: poll.id, userId: user.id } },
+      update: { optionId: parsed.data.optionId },
+      create: { pollId: poll.id, optionId: parsed.data.optionId, userId: user.id },
+    });
+    const snapshot = await getPollSnapshot(poll.id, user.id, tx);
+    if (!snapshot) return { status: "error", message: "This poll is unavailable." };
+    threadPath = `/t/${poll.thread.slug}`;
+    return { status: "success", message: "Vote recorded.", poll: snapshot };
+  });
+  if (result.status === "success" && threadPath) revalidatePath(threadPath);
+  return result;
 }
 
 export async function createReply(formData: FormData) {

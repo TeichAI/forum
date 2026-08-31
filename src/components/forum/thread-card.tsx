@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Bookmark, MessageCircle, Pin } from "lucide-react";
+import { ArrowDown, ArrowUp, BarChart3, Bookmark, MessageCircle, Pin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { threadListInclude } from "@/lib/queries";
@@ -37,6 +37,11 @@ export function ThreadCard({ thread }: { thread: ThreadCardData }) {
                 <Pin size={11} aria-hidden /> Pinned
               </span>
             )}
+            {thread.poll ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-extrabold uppercase tracking-wide" style={{ background: "var(--surface-soft)", color: "var(--foreground)" }}>
+                <BarChart3 size={11} aria-hidden /> {thread.poll.expiresAt > new Date() ? "Live poll" : "Poll closed"}
+              </span>
+            ) : null}
           </div>
           <Link href={`/t/${thread.slug}`} className="group block">
             <h2 className="flex items-start gap-2 text-[1.05rem] font-extrabold leading-snug tracking-tight group-hover:text-[var(--brand-dark)] sm:text-xl">

@@ -150,6 +150,7 @@ model User {
   blocksInitiated     Block[]              @relation("Blocker")
   blocksReceived      Block[]              @relation("Blocked")
   attachments         Attachment[]
+  pollVotes           PollVote[]
 
   @@index([role, status])
   @@index([createdAt])
@@ -215,12 +216,54 @@ model Thread {
   dislikes      ThreadDislike[]
   bookmarks     Bookmark[]
   notifications Notification[]
+  poll          Poll?
 
   @@index([status, isPinned, bumpedAt(sort: Desc)])
   @@index([categoryId, status, bumpedAt(sort: Desc)])
   @@index([status, bumpedAt(sort: Desc), id(sort: Desc)])
   @@index([categoryId, status, bumpedAt(sort: Desc), id(sort: Desc)])
   @@index([authorId, createdAt(sort: Desc)])
+}
+
+model Poll {
+  id        String       @id @default(cuid())
+  threadId  String       @unique
+  question  String
+  expiresAt DateTime
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  thread    Thread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  options   PollOption[]
+  votes     PollVote[]
+
+  @@index([expiresAt])
+}
+
+model PollOption {
+  id       String     @id @default(cuid())
+  pollId   String
+  text     String
+  position Int
+  poll     Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes    PollVote[]
+
+  @@unique([pollId, position])
+  @@unique([pollId, id])
+}
+
+model PollVote {
+  pollId    String
+  optionId  String
+  userId    String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option    PollOption @relation(fields: [pollId, optionId], references: [pollId, id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([pollId, userId])
+  @@index([optionId])
+  @@index([userId])
 }
 
 model ThreadTag {
