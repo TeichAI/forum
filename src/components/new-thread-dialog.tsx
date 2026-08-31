@@ -4,13 +4,14 @@ import type { SpacePostingPolicy } from "@prisma/client";
 import { createContext, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight, X } from "lucide-react";
+import { ArrowRight, Plus, Trash2, X } from "lucide-react";
 import { createThread } from "@/actions/forum";
 import { MarkdownEditorClient } from "@/components/markdown-editor-client";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { RateLimitForm } from "@/components/ui/rate-limit-form";
 import type { ForumRole } from "@/lib/roles";
 import { canStartDiscussion } from "@/lib/space-posting-permissions";
+import { POLL_DURATION_OPTIONS } from "@/lib/polls";
 
 type CategoryOption = {
   id: string;
@@ -50,6 +51,9 @@ export function NewThreadDialogProvider({
   const [draftKey, setDraftKey] = useState(0);
   const [titleLength, setTitleLength] = useState(0);
   const [tagValue, setTagValue] = useState("");
+  const [hasPoll, setHasPoll] = useState(false);
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+  const isStaff = viewerRole === "MODERATOR" || viewerRole === "ADMIN";
   const selectableCategories = useMemo(
     () => isAuthenticated
       ? categories.filter((category) => canStartDiscussion(viewerRole, category.postingPolicy))
@@ -62,6 +66,8 @@ export function NewThreadDialogProvider({
     setSelectedCategoryId("");
     setTitleLength(0);
     setTagValue("");
+    setHasPoll(false);
+    setPollOptions(["", ""]);
     setDraftKey((current) => current + 1);
   }, []);
 
@@ -94,6 +100,10 @@ export function NewThreadDialogProvider({
         .filter(Boolean),
     )].slice(0, 5);
   }, [tagValue]);
+  const duplicatePollChoices = useMemo(() => {
+    const normalized = pollOptions.map((option) => option.trim().toLocaleLowerCase());
+    return new Set(normalized.filter((option, index) => option && normalized.indexOf(option) !== index));
+  }, [pollOptions]);
 
   return (
     <NewThreadDialogContext.Provider
@@ -211,6 +221,67 @@ export function NewThreadDialogProvider({
               />
               <p className="hint">You can edit or delete your discussion after publishing. Be kind and stay on topic.</p>
             </div>
+
+            {isStaff ? (
+              <section className="rounded-xl border bg-[var(--surface-soft)]/30 p-4 sm:p-5" style={{ borderColor: "var(--line)" }} aria-label="Optional poll">
+                <label className="flex cursor-pointer items-center gap-2 font-bold">
+                  <input type="checkbox" name="hasPoll" value="true" checked={hasPoll} onChange={(event) => setHasPoll(event.target.checked)} />
+                  Add a poll
+                </label>
+                <p className="mt-1 text-xs muted">Polls are available to moderators and administrators.</p>
+                {hasPoll ? (
+                  <div className="mt-4 space-y-4 border-t pt-4" style={{ borderColor: "var(--line)" }}>
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                      <div>
+                      <label className="label" htmlFor="new-thread-poll-question">Poll question</label>
+                      <input className="input" id="new-thread-poll-question" name="pollQuestion" maxLength={240} required placeholder="What should the community choose?" />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="new-thread-poll-duration">Poll duration</label>
+                        <select className="input" id="new-thread-poll-duration" name="pollDuration" defaultValue="7d" required>
+                          {POLL_DURATION_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <fieldset className="space-y-2">
+                      <legend className="label">Choices <span className="font-normal muted">· {pollOptions.length}/10</span></legend>
+                      {pollOptions.map((option, index) => {
+                        const duplicate = Boolean(option.trim() && duplicatePollChoices.has(option.trim().toLocaleLowerCase()));
+                        return (
+                        <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-start gap-2" key={index}>
+                          <span className="mt-3 text-center text-xs font-extrabold tabular-nums muted" aria-hidden>{index + 1}</span>
+                          <div>
+                          <input
+                            className={`input ${duplicate ? "input-error" : ""}`}
+                            name="pollOptions"
+                            value={option}
+                            onChange={(event) => setPollOptions((current) => current.map((value, optionIndex) => optionIndex === index ? event.target.value : value))}
+                            maxLength={120}
+                            required
+                            aria-label={`Poll choice ${index + 1}`}
+                            aria-invalid={duplicate || undefined}
+                            aria-describedby={duplicate ? `poll-choice-${index}-error` : undefined}
+                          />
+                          {duplicate ? <p id={`poll-choice-${index}-error`} className="hint hint-error">Choices must be unique.</p> : null}
+                          </div>
+                          {pollOptions.length > 2 ? (
+                            <button type="button" className="button button-ghost !px-3" aria-label={`Remove poll choice ${index + 1}`} title="Remove choice" onClick={() => setPollOptions((current) => current.filter((_, optionIndex) => optionIndex !== index))}>
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          ) : null}
+                        </div>
+                      );})}
+                      {pollOptions.length < 10 ? (
+                        <button type="button" className="button button-secondary button-sm ml-8" onClick={() => setPollOptions((current) => [...current, ""])}>
+                          <Plus size={15} aria-hidden /> Add choice
+                        </button>
+                      ) : null}
+                    </fieldset>
+                    <p className="hint">Votes can be changed until the poll closes automatically.</p>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" style={{ borderColor: "var(--line)" }}>
               <p className="text-xs leading-5 muted">By publishing, you agree to follow community guidelines.</p>

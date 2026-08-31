@@ -10,6 +10,7 @@ let createdThreadUrl = "";
 let announcementThreadUrl = "";
 let adminOnlyThreadUrl = "";
 let privateMailThreadUrl = "";
+let pollThreadUrl = "";
 
 function sessionToken(userId: string) {
   const payload = Buffer.from(JSON.stringify({ userId, expiresAt: Date.now() + 30 * 60_000 })).toString("base64url");
@@ -57,6 +58,15 @@ test("anonymous visitors can discover public content", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Sign in to reply" })).toBeVisible();
 });
 
+test("closed polls keep their final results visible to anonymous visitors", async ({ page }) => {
+  await page.goto("/t/closed-community-poll");
+  const poll = page.locator('section[aria-labelledby^="poll-"]');
+  await expect(poll.getByLabel("Poll closed")).toBeVisible();
+  await expect(poll.getByText(/Final results/)).toContainText("1 vote");
+  await expect(poll.getByText("The first result")).toBeVisible();
+  await expect(poll.getByRole("button", { name: /vote/i })).toHaveCount(0);
+});
+
 test("keyboard and reduced-motion preferences receive accessible navigation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
@@ -75,7 +85,7 @@ test("a member updates their profile and publishes a tagged discussion", async (
   await page.getByLabel("Display name").fill("Updated Pond Member");
   await page.getByLabel("Bio").fill("Building a well-tested pond.");
   await page.getByRole("button", { name: "Save profile" }).click();
-  await expect(page.getByRole("status")).toHaveText("Profile saved.");
+  await expect(page.getByText("Profile saved.", { exact: true })).toBeVisible();
   await page.goto(`/members/${featureIds.member}`);
   await expect(page.getByRole("heading", { name: "Updated Pond Member" })).toBeVisible();
 
@@ -98,6 +108,53 @@ test("a member updates their profile and publishes a tagged discussion", async (
 
   const missingPage = await page.goto("/new");
   expect(missingPage?.status()).toBe(404);
+});
+
+test("staff publish a poll and open viewers receive clean vote updates", async ({ browser, context, page }) => {
+  await useIdentity(context, featureIds.admin);
+  await page.goto("/c/general");
+  await page.getByRole("main").getByRole("button", { name: "New thread" }).click();
+  await page.getByLabel("Title").fill("Which poll option should win?");
+  await page.getByRole("dialog").locator('textarea[name="body"]').fill("A browser-tested staff poll.");
+  await page.getByRole("checkbox", { name: "Add a poll" }).check();
+  await page.getByLabel("Poll question").fill("Which direction should we take?");
+  await page.getByLabel("Poll choice 1").fill("Build it now");
+  await page.getByLabel("Poll choice 2").fill("Research it first");
+  await page.getByLabel("Poll duration").selectOption("1d");
+  await page.getByRole("button", { name: "Publish discussion" }).click();
+  await expect(page).toHaveURL(/\/t\/which-poll-option-should-win-/);
+  pollThreadUrl = page.url();
+  await expect(page.getByLabel("Poll active")).toBeVisible();
+
+  const memberContext = await browser.newContext();
+  const otherContext = await browser.newContext();
+  await useIdentity(memberContext, featureIds.member);
+  await useIdentity(otherContext, featureIds.other);
+  const memberPage = await memberContext.newPage();
+  const otherPage = await otherContext.newPage();
+  await Promise.all([memberPage.goto(pollThreadUrl), otherPage.goto(pollThreadUrl)]);
+  const memberPoll = memberPage.locator('section[aria-labelledby^="poll-"]');
+  const otherPoll = otherPage.locator('section[aria-labelledby^="poll-"]');
+
+  await memberPoll.getByRole("radio", { name: /Build it now/ }).check();
+  await expect(memberPoll.getByRole("status")).toHaveText("Vote recorded.");
+  await expect(otherPoll.getByText(/Closes/)).toContainText("1 vote", { timeout: 2_000 });
+
+  await otherPoll.getByRole("radio", { name: /Research it first/ }).check();
+  await expect(memberPoll.getByText(/Closes/)).toContainText("2 votes", { timeout: 2_000 });
+
+  await otherContext.setOffline(true);
+  await memberPoll.getByRole("radio", { name: /Research it first/ }).check();
+  await expect(memberPoll.getByText("2 votes")).toBeVisible();
+  await expect(memberPoll.getByText("100%")).toBeVisible();
+  await otherContext.setOffline(false);
+  await expect(otherPoll.getByText("100%")).toBeVisible({ timeout: 2_000 });
+
+  await otherPage.setViewportSize({ width: 390, height: 844 });
+  await expect(otherPoll.getByRole("progressbar", { name: /Research it first: 100%/ })).toBeVisible();
+  expect((await otherPoll.boundingBox())?.width).toBeLessThanOrEqual(390);
+  await memberContext.close();
+  await otherContext.close();
 });
 
 test("another member replies, switches reactions, follows, and sends private Mail", async ({ context, page }) => {

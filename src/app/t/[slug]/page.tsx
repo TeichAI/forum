@@ -13,6 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { RateLimitForm } from "@/components/ui/rate-limit-form";
 import { PostingPolicyBadge } from "@/components/forum/space-posting-policy";
+import { PollCard } from "@/components/forum/poll-card";
 import { UserRoleBadge } from "@/components/ui/user-role-badge";
 import { getViewer } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -23,6 +24,8 @@ import { uploadsEnabled } from "@/lib/upload-capability";
 import { publicThreadWhere, unavailableMetadata } from "@/lib/access";
 import { listReplyBranches, REPLY_BRANCH_PAGE_SIZE } from "@/lib/reply-pagination";
 import { canonicalUrl, cleanMarkdownExcerpt, siteName, socialImagePath } from "@/lib/metadata";
+import { getPollSnapshot } from "@/lib/poll-data";
+import { canAccessPollThread } from "@/lib/poll-access";
 
 export const dynamic = "force-dynamic";
 
@@ -51,20 +54,23 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
       upvotes: viewer ? { where: { userId: viewer.id } } : false,
       dislikes: viewer ? { where: { userId: viewer.id } } : false,
       bookmarks: viewer ? { where: { userId: viewer.id } } : false,
+      poll: { select: { id: true } },
       _count: { select: { upvotes: true, dislikes: true, replies: { where: { status: "PUBLISHED", author: { status: "ACTIVE" } } } } },
     },
   });
   if (!thread || ((thread.status !== "PUBLISHED" || thread.category.archivedAt || thread.author.status !== "ACTIVE") && !canModerate(viewer))) notFound();
 
   const returnTo = `/t/${thread.slug}`;
-  const replyPage = await listReplyBranches({
+  const [replyPage, initialPoll] = await Promise.all([listReplyBranches({
     threadId: thread.id,
     viewerId: viewer?.id,
     viewerIsStaff: canModerate(viewer),
     cursor: replyParams.replyCursor,
     branchId: replyParams.branch,
     branchPage: Number(replyParams.branchPage) || 0,
-  });
+  }), thread.poll
+    ? canAccessPollThread(thread, viewer).then((allowed) => allowed ? getPollSnapshot(thread.poll!.id, viewer?.id) : null)
+    : Promise.resolve(null)]);
   const displayReplies = flattenReplyTree(buildReplyTree(replyPage.items));
   const canViewerReply = Boolean(
     viewer
@@ -115,6 +121,7 @@ export default async function ThreadPage({ params, searchParams = Promise.resolv
           </div>
         </header>
         <div className="p-5 sm:p-8"><Markdown>{thread.body}</Markdown></div>
+        {initialPoll ? <PollCard initialPoll={initialPoll} canVote={Boolean(viewer)} /> : null}
         <footer
           className="flex flex-wrap items-center gap-2 rounded-b-[17px] border-t px-5 py-3 sm:px-8"
           style={{ borderColor: "var(--line)", background: "var(--surface-soft)" }}

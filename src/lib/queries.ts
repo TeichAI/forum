@@ -7,6 +7,7 @@ export const threadListInclude = {
   author: { select: { id: true, username: true, displayName: true, imageUrl: true, role: true } },
   category: true,
   tags: { include: { tag: true } },
+  poll: { select: { expiresAt: true } },
   _count: { select: { replies: true, upvotes: true, dislikes: true, bookmarks: true } },
 } satisfies Prisma.ThreadInclude;
 

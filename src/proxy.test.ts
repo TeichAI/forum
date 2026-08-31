@@ -83,8 +83,9 @@ describe("request proxy", () => {
     await proxy(request("/"), {} as never);
     await proxy(request("/healthz", { ip: "203.0.113.4" }), {} as never);
     await proxy(request("/readyz", { ip: "203.0.113.4" }), {} as never);
+    await proxy(request("/api/polls/poll_1/events", { ip: "203.0.113.4" }), {} as never);
     expect(mocks.consume).not.toHaveBeenCalled();
-    expect(mocks.clerk).toHaveBeenCalledTimes(3);
+    expect(mocks.clerk).toHaveBeenCalledTimes(4);
   });
 
   it("rewrites denied reads with 429 retry metadata", async () => {

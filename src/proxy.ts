@@ -4,7 +4,9 @@ import { isE2ETestMode } from "@/lib/e2e-auth";
 import { consumeRateLimit, RATE_LIMIT_POLICIES, railwayClientIp } from "@/lib/rate-limit";
 
 function isLimitedRead(request: NextRequest) {
-  return request.method === "GET" && !["/rate-limited", "/healthz", "/readyz"].includes(request.nextUrl.pathname);
+  return request.method === "GET"
+    && !request.nextUrl.pathname.match(/^\/api\/polls\/[^/]+\/events$/)
+    && !["/rate-limited", "/healthz", "/readyz"].includes(request.nextUrl.pathname);
 }
 
 function isHealthCheck(request: NextRequest) {

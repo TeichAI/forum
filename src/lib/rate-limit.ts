@@ -44,6 +44,9 @@ export const RATE_LIMIT_POLICIES = {
   searchAnonymous: { scope: "search:anonymous", capacity: 15, refillPerSecond: 1 / 6 },
   memberMutation: { scope: "mutation:member", capacity: 120, refillPerSecond: 1 },
   interaction: { scope: "mutation:interaction", capacity: 60, refillPerSecond: 0.5 },
+  pollVote: { scope: "mutation:poll-vote", capacity: 8, refillPerSecond: 1 / 5 },
+  pollStreamUser: { scope: "stream:poll:user", capacity: 8, refillPerSecond: 1 / 30 },
+  pollStreamAnonymous: { scope: "stream:poll:anonymous", capacity: 4, refillPerSecond: 1 / 60 },
   thread: { scope: "mutation:thread", capacity: 5, refillPerSecond: 1 / 600 },
   reply: { scope: "mutation:reply", capacity: 20, refillPerSecond: 1 / 60 },
   mail: { scope: "mutation:mail", capacity: 30, refillPerSecond: 1 / 3 },
@@ -107,7 +110,7 @@ export function memberMutationPolicies(
   policy?: RateLimitPolicy,
   additional: RateLimitPolicy[] = [],
 ) {
-  if (user.role === "MODERATOR" || user.role === "ADMIN") return [RATE_LIMIT_POLICIES.staff];
+  if (user.role === "MODERATOR" || user.role === "ADMIN") return [RATE_LIMIT_POLICIES.staff, ...additional];
   return [RATE_LIMIT_POLICIES.memberMutation, ...(policy ? [policy] : []), ...additional];
 }
 

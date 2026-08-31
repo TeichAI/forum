@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   thread: vi.fn(), user: vi.fn(), notifications: vi.fn(), reports: vi.fn(), actions: vi.fn(),
   notificationUpdate: vi.fn(),
   replies: vi.fn(),
+  pollAccess: vi.fn(), pollSnapshot: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ getViewer: mocks.viewer, requireUser: mocks.requireUser, requireModerator: mocks.requireModerator }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound, redirect: mocks.redirect }));
@@ -21,6 +22,9 @@ vi.mock("@/lib/db", () => ({ db: {
   moderationAction: { findMany: mocks.actions },
 } }));
 vi.mock("@/lib/reply-pagination", () => ({ REPLY_BRANCH_PAGE_SIZE: 100, listReplyBranches: mocks.replies }));
+vi.mock("@/lib/poll-access", () => ({ canAccessPollThread: mocks.pollAccess }));
+vi.mock("@/lib/poll-data", () => ({ getPollSnapshot: mocks.pollSnapshot }));
+vi.mock("@/components/forum/poll-card", () => ({ PollCard: ({ initialPoll }: { initialPoll: { question: string } }) => <section>{initialPoll.question}</section> }));
 vi.mock("@/components/markdown", () => ({ Markdown: ({ children }: { children: string }) => <div>{children}</div> }));
 vi.mock("@/components/markdown-editor", () => ({ MarkdownEditor: () => <textarea aria-label="Editor" /> }));
 vi.mock("@/components/markdown-editor-client", () => ({ MarkdownEditorClient: ({ placeholder }: { placeholder: string }) => <textarea name="body" placeholder={placeholder} /> }));
@@ -55,6 +59,8 @@ beforeEach(() => {
   mocks.listThreads.mockResolvedValue({ items: [], nextCursor: null });
   mocks.replies.mockResolvedValue({ items: thread.replies, nextCursor: null, continuations: [], selectedBranchId: null });
   mocks.notificationUpdate.mockReturnValue(Promise.resolve({ count: 0 }));
+  mocks.pollAccess.mockResolvedValue(true);
+  mocks.pollSnapshot.mockResolvedValue(null);
 });
 
 describe("discussion page", () => {
@@ -112,6 +118,15 @@ describe("discussion page", () => {
     expect(screen.getByRole("button", { name: "Unlock" })).toBeInTheDocument();
     expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reply to Other" })).not.toBeInTheDocument();
+  });
+
+  it("does not read a hidden poll snapshot when live staff verification fails", async () => {
+    mocks.viewer.mockResolvedValue(admin);
+    mocks.pollAccess.mockResolvedValue(false);
+    mocks.thread.mockResolvedValue({ ...thread, status: "HIDDEN", poll: { id: "poll" } });
+    render(await ThreadPage({ params: Promise.resolve({ slug: "topic" }) }));
+    expect(mocks.pollAccess).toHaveBeenCalled();
+    expect(mocks.pollSnapshot).not.toHaveBeenCalled();
   });
 
   it("replaces replies with an admin-only notice while keeping thread locks absolute", async () => {

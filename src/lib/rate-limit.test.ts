@@ -242,6 +242,10 @@ describe("policy selection", () => {
   it("uses a generous single staff policy for staff and layered policies for members", () => {
     expect(memberMutationPolicies({ role: "ADMIN" }, RATE_LIMIT_POLICIES.thread)).toEqual([RATE_LIMIT_POLICIES.staff]);
     expect(memberMutationPolicies({ role: "MODERATOR" }, RATE_LIMIT_POLICIES.thread)).toEqual([RATE_LIMIT_POLICIES.staff]);
+    expect(memberMutationPolicies({ role: "ADMIN" }, RATE_LIMIT_POLICIES.interaction, [RATE_LIMIT_POLICIES.pollVote])).toEqual([
+      RATE_LIMIT_POLICIES.staff,
+      RATE_LIMIT_POLICIES.pollVote,
+    ]);
     expect(memberMutationPolicies({ role: "MEMBER" }, RATE_LIMIT_POLICIES.thread)).toEqual([
       RATE_LIMIT_POLICIES.memberMutation,
       RATE_LIMIT_POLICIES.thread,
